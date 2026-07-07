@@ -1,68 +1,16 @@
-## GigGrad — Student Micro-Jobs Finding Platform
+# React + Vite
 
-GigGrad is a full-stack web application designed to help students earn money inside their college campus by taking up small jobs posted by teachers or peers.
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
-## Problem We Are Solving:
+Currently, two official plugins are available:
 
-Students struggle to find quick, flexible earning opportunities
-Teachers and departments need small tasks done quickly
-No structured, trusted system — most things happen on WhatsApp or notice boards
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
 
-## Our Solution
+## React Compiler
 
-Jobs are posted within the college
-Students can apply and earn on successfull work completion
-Payments are secured through escrow (expected)/other payment option
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
-## Core Process
+## Expanding the ESLint configuration
 
-Post → Apply → Hire → Deliver → Pay
-
-## Features
-
-Job Posting (Teachers / Peers):
-
-Create micro-jobs (eg: formatting documents, data entry, lab help)
-Simple 2-minute posting form
-Set payment amount
-Upload instructions/files
-
-Job Applying (Mostly Stuents):
-
-Browse available campus jobs
-Apply with basic profile
-Track application status
-Get hired and complete tasks
-Get paid
-
-In-app chat section [if possible]:
-
-Chat between student and poster
-Clarify requirements
-Request edits
-Keep all communication inside platform
-
-Payment System (Escrow-Based) [if possible otherwise normal payment methods]:
-
-Payment is collected when job is posted
-Money held securely by platform
-Released after job completion
-Auto-release after deadline (e.g., 72 hours)
-Refunds handled for cancellations/disputes
-
-Dispute & Edit Handling:
-
-“Request Edit” button pauses payment release timer
-“Raise Dispute” option for conflicts
-Admin can review and decide outcome
-Fair resolution system
-
-Job Status System:
-
-open → job posted
-in-progress → student hired
-pending-approval → work submitted
-completed → payment released
-disputed → admin review
-cancelled → refund issued
-
+If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.

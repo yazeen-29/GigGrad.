@@ -1,5 +1,12 @@
-import { useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+
+import {
+  jobsAPI,
+  appsAPI,
+  usersAPI,
+  disputesAPI,
+  getUser,
+} from "../lib/api";
 
 import Card from "../components/ui/Card";
 import Btn from "../components/ui/Btn";
@@ -9,11 +16,7 @@ import StatusBadge from "../components/ui/StatusBadge";
 import SectionLabel from "../components/ui/SectionLabel";
 import Loading from "../components/ui/Loading";
 
-import { MY_APPLICATIONS } from "../data/applications";
 import { STATUS_CFG } from "../data/constants";
-import { useAsync } from "../hooks/useAsync";
-import { getJob } from "../services/jobs";
-
 import { daysLeft } from "../utils/helpers";
 
 import {
@@ -26,187 +29,1274 @@ import {
   Send,
   Loader2,
   CheckCircle,
-  Shield
-} from "lucide-react"; 
-export default function JobDetailPage() {
-  const { id } = useParams();
-  const navigate = useNavigate();
-  const { data: job, loading } = useAsync(() => getJob(id), [id]);
+  Shield,
+  Flag,
+  Play,
+  Check,
+} from "lucide-react";
 
+
+export default function JobDetailPage({
+  job: initialJob,
+  setPage,
+  currentUser: propUser,
+}) {
+  /*
+   * IMPORTANT:
+   * Your current App.jsx uses:
+   *
+   * <JobDetailPage
+   *    job={selectedJob}
+   *    setPage={navigate}
+   *    currentUser={currentUser}
+   * />
+   *
+   * Therefore we DO NOT use useParams() or useNavigate().
+   */
+
+  const storedUser = getUser();
+  const currentUser = propUser || storedUser;
+
+  const [job, setJob] = useState(initialJob || null);
+
+  const [loading, setLoading] = useState(!initialJob);
+  const [loadError, setLoadError] = useState(null);
+
+  /* Application */
   const [applying, setApplying] = useState(false);
   const [coverNote, setCoverNote] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [applyLoading, setApplyLoading] = useState(false);
 
-  if (loading) return <Loading label="Loading job…" />;
+  /* Review */
+  const [rating, setRating] = useState(0);
+  const [reviewComment, setReviewComment] = useState("");
+  const [reviewed, setReviewed] = useState(false);
+  const [reviewLoading, setReviewLoading] = useState(false);
 
-  // Deep-linked or stale id that no longer maps to a job.
-  if (!job) {
+  /* Dispute */
+  const [showDispute, setShowDispute] = useState(false);
+  const [disputeReason, setDisputeReason] = useState("");
+  const [disputeLoading, setDisputeLoading] = useState(false);
+  const [disputeSubmitted, setDisputeSubmitted] = useState(false);
+
+  /* Status */
+  const [statusLoading, setStatusLoading] = useState(false);
+
+
+  // ─────────────────────────────────────────────────────────────
+  // Load the latest job from the REAL backend
+  // ─────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!initialJob?.id) {
+      setLoading(false);
+      setLoadError("No job was selected.");
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadJob() {
+      try {
+        setLoading(true);
+        setLoadError(null);
+
+        /*
+         * Refresh the selected job from PostgreSQL through Express.
+         * This prevents stale job information.
+         */
+        const freshJob = await jobsAPI.getOne(initialJob.id);
+
+        if (!cancelled) {
+          setJob(freshJob);
+        }
+
+        /*
+         * Check whether the current student already applied.
+         */
+        if (currentUser && currentUser.role === "STUDENT") {
+          try {
+            const applications = await appsAPI.mine();
+
+            const existing = applications.find(
+              (application) =>
+                application.jobId === initialJob.id ||
+                application.job?.id === initialJob.id
+            );
+
+            if (!cancelled && existing) {
+              setSubmitted(true);
+            }
+          } catch (err) {
+            /*
+             * Application status should not prevent the job page
+             * from loading.
+             */
+            console.error(
+              "Failed to load application status:",
+              err
+            );
+          }
+        }
+
+      } catch (err) {
+        if (!cancelled) {
+          /*
+           * If we already have the selected job, keep displaying it
+           * instead of turning the entire page blank.
+           */
+          if (!initialJob) {
+            setLoadError(
+              err.message || "Failed to load job"
+            );
+          } else {
+            setJob(initialJob);
+          }
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadJob();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialJob?.id]);
+
+
+  // ─────────────────────────────────────────────────────────────
+  // Loading
+  // ─────────────────────────────────────────────────────────────
+
+  if (loading && !job) {
+    return <Loading label="Loading job…" />;
+  }
+
+
+  // ─────────────────────────────────────────────────────────────
+  // Error
+  // ─────────────────────────────────────────────────────────────
+
+  if (loadError && !job) {
     return (
       <div className="max-w-lg mx-auto px-4 py-20 text-center">
-        <h2 className="text-xl font-bold text-slate-900 mb-2">Job not found</h2>
-        <p className="text-slate-500 text-sm mb-6">This job may have been removed or the link is incorrect.</p>
-        <button onClick={() => navigate("/jobs")} className="text-sm font-semibold text-blue-700 hover:underline">
+
+        <h2 className="text-xl font-bold text-slate-900 mb-2">
+          Unable to load job
+        </h2>
+
+        <p className="text-slate-500 text-sm mb-6">
+          {loadError}
+        </p>
+
+        <button
+          onClick={() => setPage("jobs")}
+          className="text-sm font-semibold text-blue-700 hover:underline"
+        >
           ← Back to all jobs
         </button>
+
       </div>
     );
   }
 
-  // TODO(firebase): derive from the signed-in user's applications collection.
-  const isApplied = MY_APPLICATIONS.some(a => a.job.id === job.id);
 
-  const handleApply = () => {
-    if (!coverNote.trim()) return;
+  // ─────────────────────────────────────────────────────────────
+  // Job not found
+  // ─────────────────────────────────────────────────────────────
+
+  if (!job) {
+    return (
+      <div className="max-w-lg mx-auto px-4 py-20 text-center">
+
+        <h2 className="text-xl font-bold text-slate-900 mb-2">
+          Job not found
+        </h2>
+
+        <p className="text-slate-500 text-sm mb-6">
+          This job may have been removed or the link is incorrect.
+        </p>
+
+        <button
+          onClick={() => setPage("jobs")}
+          className="text-sm font-semibold text-blue-700 hover:underline"
+        >
+          ← Back to all jobs
+        </button>
+
+      </div>
+    );
+  }
+
+
+  // ─────────────────────────────────────────────────────────────
+  // Derived values
+  // ─────────────────────────────────────────────────────────────
+
+  const poster = job.postedBy || job.poster || {};
+
+  const applicantCount =
+    job._count?.applications ??
+    job.applicants ??
+    0;
+
+  const isPoster =
+    currentUser?.id === job.postedById;
+
+  const isWorker =
+    currentUser?.id === job.assignedToId;
+
+  const isStudent =
+    currentUser?.role === "STUDENT";
+
+  const isTeacher =
+    currentUser?.role === "TEACHER";
+
+  const isAdmin =
+    currentUser?.role === "ADMIN";
+
+  const isParticipant =
+    isPoster || isWorker;
+
+  const isApplied = submitted;
+
+  const postedAgo = job.createdAt
+    ? getTimeAgo(new Date(job.createdAt))
+    : "recently";
+
+
+  // ─────────────────────────────────────────────────────────────
+  // Apply
+  // ─────────────────────────────────────────────────────────────
+
+  const handleApply = async () => {
+    if (!coverNote.trim()) {
+      return;
+    }
+
+    if (!currentUser) {
+      setPage("login");
+      return;
+    }
+
+    if (isPoster) {
+      alert("You cannot apply to your own job.");
+      return;
+    }
+
+    if (currentUser.role !== "STUDENT") {
+      alert("Only students can apply for jobs.");
+      return;
+    }
+
     setApplyLoading(true);
-    setTimeout(() => { setApplyLoading(false); setSubmitted(true); setApplying(false); }, 1200);
+
+    try {
+      await appsAPI.apply({
+        jobId: job.id,
+        coverNote: coverNote.trim(),
+      });
+
+      setSubmitted(true);
+      setApplying(false);
+
+      /*
+       * Refresh job so applicant count updates immediately.
+       */
+      try {
+        const freshJob = await jobsAPI.getOne(job.id);
+        setJob(freshJob);
+      } catch {
+        // Application succeeded, so don't show an error just
+        // because refreshing the count failed.
+      }
+
+    } catch (err) {
+      alert(err.message || "Failed to submit application.");
+    } finally {
+      setApplyLoading(false);
+    }
   };
+
+
+  // ─────────────────────────────────────────────────────────────
+  // Update job status
+  // ─────────────────────────────────────────────────────────────
+
+  const handleStatusUpdate = async (newStatus) => {
+    if (!currentUser || !isParticipant) {
+      return;
+    }
+
+    setStatusLoading(true);
+
+    try {
+      const updatedJob = await jobsAPI.status(
+        job.id,
+        newStatus
+      );
+
+      setJob((previous) => ({
+        ...previous,
+        ...updatedJob,
+      }));
+
+    } catch (err) {
+      alert(
+        err.message ||
+        "Failed to update job status."
+      );
+    } finally {
+      setStatusLoading(false);
+    }
+  };
+
+
+  // ─────────────────────────────────────────────────────────────
+  // Review
+  // ─────────────────────────────────────────────────────────────
+
+  const handleReview = async () => {
+    if (!rating || !currentUser) {
+      return;
+    }
+
+    if (!isParticipant) {
+      alert("Only the student and poster involved in the job can leave a review.");
+      return;
+    }
+
+    const revieweeId =
+      currentUser.id === job.postedById
+        ? job.assignedToId
+        : job.postedById;
+
+    if (!revieweeId) {
+      alert("The other participant could not be found.");
+      return;
+    }
+
+    setReviewLoading(true);
+
+    try {
+      await usersAPI.review({
+        jobId: job.id,
+        revieweeId,
+        rating,
+        comment: reviewComment.trim(),
+      });
+
+      setReviewed(true);
+
+    } catch (err) {
+      alert(
+        err.message ||
+        "Failed to submit review."
+      );
+    } finally {
+      setReviewLoading(false);
+    }
+  };
+
+
+  // ─────────────────────────────────────────────────────────────
+  // Dispute
+  // ─────────────────────────────────────────────────────────────
+
+  const handleDispute = async () => {
+    if (!disputeReason.trim()) {
+      return;
+    }
+
+    if (!isParticipant) {
+      alert("Only the people involved in this job can raise a dispute.");
+      return;
+    }
+
+    setDisputeLoading(true);
+
+    try {
+      await disputesAPI.raise({
+        jobId: job.id,
+        reason: disputeReason.trim(),
+      });
+
+      setDisputeSubmitted(true);
+      setShowDispute(false);
+      setDisputeReason("");
+
+    } catch (err) {
+      alert(
+        err.message ||
+        "Failed to raise dispute."
+      );
+    } finally {
+      setDisputeLoading(false);
+    }
+  };
+
+
+  // ─────────────────────────────────────────────────────────────
+  // Render
+  // ─────────────────────────────────────────────────────────────
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6">
-      {/* Back */}
-      <button onClick={() => navigate("/jobs")} className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900 mb-5 transition-colors">
-        <ChevronRight size={14} className="rotate-180" /> Back to Jobs
+
+      {/* ───────────────── BACK ───────────────── */}
+
+      <button
+        onClick={() => setPage("jobs")}
+        className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900 mb-5 transition-colors"
+      >
+        <ChevronRight
+          size={14}
+          className="rotate-180"
+        />
+        Back to Jobs
       </button>
 
+
+      {/* ───────────────── CONTENT ───────────────── */}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main content */}
+
+        {/* ═══════════════════════════════════════════════════
+            MAIN
+        ═══════════════════════════════════════════════════ */}
+
         <div className="lg:col-span-2 flex flex-col gap-5">
+
+          {/* ───────────── JOB CARD ───────────── */}
+
           <Card className="p-6">
-            {/* Job header */}
+
+            {/* Header */}
+
             <div className="flex items-start gap-3 mb-4">
+
               <div className="flex-1">
+
                 <div className="flex flex-wrap gap-2 mb-3">
-                  <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">{job.category}</span>
+
+                  <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
+                    {job.category}
+                  </span>
+
                   {job.urgent && (
                     <span className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 px-2.5 py-1 rounded-full flex items-center gap-1">
-                      <Zap size={10} className="fill-red-500" /> Urgent
+                      <Zap
+                        size={10}
+                        className="fill-red-500"
+                      />
+                      Urgent
                     </span>
                   )}
+
                   <StatusBadge status={job.status} />
+
                 </div>
-                <h1 className="text-xl font-bold text-slate-900 leading-snug">{job.title}</h1>
+
+                <h1 className="text-xl font-bold text-slate-900 leading-snug">
+                  {job.title}
+                </h1>
+
               </div>
+
+
+              {/* Amount */}
+
               <div className="text-right flex-shrink-0">
+
                 <div className="flex items-start gap-0.5 text-emerald-600">
-                  <span className="text-sm font-bold mt-0.5">₹</span>
-                  <span className="text-3xl font-extrabold leading-none">{job.amount}</span>
+
+                  <span className="text-sm font-bold mt-0.5">
+                    ₹
+                  </span>
+
+                  <span className="text-3xl font-extrabold leading-none">
+                    {Number(job.amount || 0).toLocaleString("en-IN")}
+                  </span>
+
                 </div>
-                <p className="text-xs text-slate-400 mt-0.5">upon completion</p>
+
+                <p className="text-xs text-slate-400 mt-0.5">
+                  upon completion
+                </p>
+
               </div>
+
             </div>
+
 
             {/* Meta */}
+
             <div className="flex flex-wrap gap-4 pb-4 mb-4 border-b border-slate-100">
-              <span className="flex items-center gap-1.5 text-sm text-slate-500"><Calendar size={13} className="text-slate-400" />{daysLeft(job.deadline)}</span>
-              <span className="flex items-center gap-1.5 text-sm text-slate-500"><Users size={13} className="text-slate-400" />{job.applicants} applicants</span>
-              <span className="flex items-center gap-1.5 text-sm text-slate-500"><Clock size={13} className="text-slate-400" />Posted {job.postedAgo}</span>
-              {job.fileUrl && <span className="flex items-center gap-1.5 text-sm text-blue-600 cursor-pointer hover:underline"><Paperclip size={13} />{job.fileUrl}</span>}
+
+              <span className="flex items-center gap-1.5 text-sm text-slate-500">
+                <Calendar
+                  size={13}
+                  className="text-slate-400"
+                />
+                {daysLeft(job.deadline)}
+              </span>
+
+              <span className="flex items-center gap-1.5 text-sm text-slate-500">
+                <Users
+                  size={13}
+                  className="text-slate-400"
+                />
+                {applicantCount} applicant
+                {applicantCount !== 1 ? "s" : ""}
+              </span>
+
+              <span className="flex items-center gap-1.5 text-sm text-slate-500">
+                <Clock
+                  size={13}
+                  className="text-slate-400"
+                />
+                Posted {postedAgo}
+              </span>
+
+              {job.fileUrl && (
+                <a
+                  href={job.fileUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="flex items-center gap-1.5 text-sm text-blue-600 hover:underline"
+                >
+                  <Paperclip size={13} />
+                  View attachment
+                </a>
+              )}
+
             </div>
+
 
             {/* Description */}
-            <div>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Job Description</p>
-              <p className="text-slate-700 text-sm leading-relaxed">{job.description}</p>
-            </div>
-          </Card>
 
-          {/* Apply section */}
-          {!submitted && !isApplied ? (
-            <Card className="p-6">
-              {!applying ? (
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-semibold text-slate-900 text-sm">Interested in this job?</p>
-                    <p className="text-xs text-slate-400 mt-0.5">Write a short note and apply in seconds</p>
-                  </div>
-                  <Btn onClick={() => setApplying(true)} icon={<Send size={14} />}>Apply Now</Btn>
+            <div>
+
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+                Job Description
+              </p>
+
+              <p className="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap">
+                {job.description}
+              </p>
+
+            </div>
+
+
+            {/* ───────────── STATUS CONTROLS ───────────── */}
+
+            {isParticipant && (
+              <div className="mt-5 pt-5 border-t border-slate-100">
+
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+                  Job Progress
+                </p>
+
+                <div className="flex flex-wrap gap-2">
+
+                  {/* Assigned student starts work */}
+
+                  {isWorker &&
+                    job.status === "OPEN" && (
+                      <Btn
+                        size="sm"
+                        onClick={() =>
+                          handleStatusUpdate(
+                            "IN_PROGRESS"
+                          )
+                        }
+                        disabled={statusLoading}
+                        icon={
+                          statusLoading ? (
+                            <Loader2
+                              size={13}
+                              className="animate-spin"
+                            />
+                          ) : (
+                            <Play size={13} />
+                          )
+                        }
+                      >
+                        Start Work
+                      </Btn>
+                    )}
+
+
+                  {/* Worker submits work */}
+
+                  {isWorker &&
+                    job.status === "IN_PROGRESS" && (
+                      <Btn
+                        size="sm"
+                        onClick={() =>
+                          handleStatusUpdate(
+                            "PENDING_APPROVAL"
+                          )
+                        }
+                        disabled={statusLoading}
+                        icon={
+                          statusLoading ? (
+                            <Loader2
+                              size={13}
+                              className="animate-spin"
+                            />
+                          ) : (
+                            <Check size={13} />
+                          )
+                        }
+                      >
+                        Submit for Approval
+                      </Btn>
+                    )}
+
+
+                  {/* Poster approves */}
+
+                  {isPoster &&
+                    job.status === "PENDING_APPROVAL" && (
+                      <Btn
+                        size="sm"
+                        onClick={() =>
+                          handleStatusUpdate(
+                            "COMPLETED"
+                          )
+                        }
+                        disabled={statusLoading}
+                        icon={
+                          statusLoading ? (
+                            <Loader2
+                              size={13}
+                              className="animate-spin"
+                            />
+                          ) : (
+                            <CheckCircle size={13} />
+                          )
+                        }
+                      >
+                        Approve & Complete
+                      </Btn>
+                    )}
+
                 </div>
-              ) : (
-                <div>
-                  <p className="font-semibold text-slate-900 text-sm mb-1">Write a cover note</p>
-                  <p className="text-xs text-slate-400 mb-3">Tell the poster why you are the right fit (2–3 sentences is fine)</p>
-                  <textarea
-                    value={coverNote}
-                    onChange={e => setCoverNote(e.target.value)}
-                    placeholder="e.g. I have experience in APA formatting from my research methodology course. I can deliver within 2 days..."
-                    rows={4}
-                    className="w-full p-3 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none mb-3"
-                  />
-                  <div className="flex items-center gap-3">
-                    <Btn onClick={handleApply} disabled={!coverNote.trim() || applyLoading} icon={applyLoading ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}>
-                      {applyLoading ? "Submitting..." : "Submit Application"}
+
+              </div>
+            )}
+
+
+            {/* ───────────── DISPUTE ───────────── */}
+
+            {[
+              "IN_PROGRESS",
+              "PENDING_APPROVAL",
+            ].includes(job.status) &&
+              currentUser &&
+              isParticipant && (
+
+                <div className="mt-5 pt-5 border-t border-slate-100">
+
+                  {!disputeSubmitted && (
+                    <Btn
+                      variant="danger"
+                      size="sm"
+                      onClick={() =>
+                        setShowDispute(true)
+                      }
+                      icon={<Flag size={12} />}
+                    >
+                      Raise Dispute
                     </Btn>
-                    <Btn variant="ghost" onClick={() => setApplying(false)}>Cancel</Btn>
-                    <span className="text-xs text-slate-400 ml-auto">{coverNote.length}/400</span>
-                  </div>
+                  )}
+
+
+                  {showDispute && (
+                    <div className="mt-3">
+
+                      <textarea
+                        value={disputeReason}
+                        onChange={(e) =>
+                          setDisputeReason(
+                            e.target.value
+                          )
+                        }
+                        placeholder="Explain the issue clearly..."
+                        rows={4}
+                        maxLength={1000}
+                        className="w-full p-3 text-sm border border-red-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-400 resize-none mb-2"
+                      />
+
+                      <div className="flex items-center gap-3">
+
+                        <Btn
+                          variant="danger"
+                          size="sm"
+                          onClick={handleDispute}
+                          disabled={
+                            !disputeReason.trim() ||
+                            disputeLoading
+                          }
+                          icon={
+                            disputeLoading ? (
+                              <Loader2
+                                size={12}
+                                className="animate-spin"
+                              />
+                            ) : undefined
+                          }
+                        >
+                          {disputeLoading
+                            ? "Submitting..."
+                            : "Submit Dispute"}
+                        </Btn>
+
+                        <Btn
+                          variant="ghost"
+                          size="sm"
+                          onClick={() =>
+                            setShowDispute(false)
+                          }
+                        >
+                          Cancel
+                        </Btn>
+
+                      </div>
+
+                    </div>
+                  )}
+
+
+                  {disputeSubmitted && (
+                    <p className="text-xs text-red-600 mt-2">
+                      Dispute raised. Admin will review
+                      and contact both parties.
+                    </p>
+                  )}
+
                 </div>
               )}
-            </Card>
-          ) : (
-            <Card className="p-5 border-emerald-200 bg-emerald-50">
-              <div className="flex items-center gap-3">
-                <CheckCircle size={20} className="text-emerald-600 flex-shrink-0" />
+
+
+          </Card>
+
+
+          {/* ═══════════════════════════════════════════════════
+              APPLICATION
+          ═══════════════════════════════════════════════════ */}
+
+          {isStudent &&
+            !isPoster &&
+            job.status === "OPEN" &&
+            !submitted ? (
+
+            <Card className="p-6">
+
+              {!applying ? (
+
+                <div className="flex items-center justify-between gap-4">
+
+                  <div>
+
+                    <p className="font-semibold text-slate-900 text-sm">
+                      Interested in this job?
+                    </p>
+
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Write a short note and apply in seconds
+                    </p>
+
+                  </div>
+
+                  <Btn
+                    onClick={() =>
+                      setApplying(true)
+                    }
+                    icon={<Send size={14} />}
+                  >
+                    Apply Now
+                  </Btn>
+
+                </div>
+
+              ) : (
+
                 <div>
-                  <p className="font-semibold text-emerald-800 text-sm">Application submitted!</p>
-                  <p className="text-xs text-emerald-600 mt-0.5">The poster will review your application and get back to you via the platform.</p>
+
+                  <p className="font-semibold text-slate-900 text-sm mb-1">
+                    Write a cover note
+                  </p>
+
+                  <p className="text-xs text-slate-400 mb-3">
+                    Tell the poster why you are the
+                    right fit.
+                  </p>
+
+                  <textarea
+                    value={coverNote}
+                    onChange={(e) =>
+                      setCoverNote(
+                        e.target.value.slice(
+                          0,
+                          400
+                        )
+                      )
+                    }
+                    placeholder="e.g. I have experience in APA formatting from my research methodology course. I can deliver within 2 days..."
+                    rows={4}
+                    maxLength={400}
+                    className="w-full p-3 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none mb-3"
+                  />
+
+                  <div className="flex items-center gap-3 flex-wrap">
+
+                    <Btn
+                      onClick={handleApply}
+                      disabled={
+                        !coverNote.trim() ||
+                        applyLoading
+                      }
+                      icon={
+                        applyLoading ? (
+                          <Loader2
+                            size={14}
+                            className="animate-spin"
+                          />
+                        ) : (
+                          <Send size={14} />
+                        )
+                      }
+                    >
+                      {applyLoading
+                        ? "Submitting..."
+                        : "Submit Application"}
+                    </Btn>
+
+                    <Btn
+                      variant="ghost"
+                      onClick={() =>
+                        setApplying(false)
+                      }
+                    >
+                      Cancel
+                    </Btn>
+
+                    <span className="text-xs text-slate-400 ml-auto">
+                      {coverNote.length}/400
+                    </span>
+
+                  </div>
+
                 </div>
-              </div>
+
+              )}
+
             </Card>
-          )}
-        </div>
 
-        {/* Sidebar */}
-        <div className="flex flex-col gap-4">
-          {/* Poster card */}
-          <Card className="p-5">
-            <SectionLabel>Posted by</SectionLabel>
-            <div className="flex items-center gap-3 mb-3">
-              <Avatar name={job.poster.name} size="lg" role={job.poster.role} />
-              <div>
-                <p className="font-bold text-slate-900 text-sm">{job.poster.name}</p>
-                <p className="text-xs text-slate-400">{job.poster.dept}</p>
-                <div className="mt-1"><RatingStars rating={job.poster.rating} /></div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${job.poster.role === "teacher" ? "bg-blue-50 text-blue-700 border border-blue-200" : "bg-emerald-50 text-emerald-700 border border-emerald-200"}`}>
-                {job.poster.role === "teacher" ? "Faculty" : "Student"}
-              </span>
-            </div>
-          </Card>
+          ) : (
 
-          {/* Job summary card */}
-          <Card className="p-5">
-            <SectionLabel>Job Summary</SectionLabel>
-            <div className="flex flex-col gap-3">
-              {[
-                { label: "Payment",   value: `₹${job.amount}`, highlight: true },
-                { label: "Deadline",  value: new Date(job.deadline).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) },
-                { label: "Category",  value: job.category },
-                { label: "Status",    value: STATUS_CFG[job.status]?.label },
-                { label: "Applicants",value: `${job.applicants} applied` },
-              ].map(({ label, value, highlight }) => (
-                <div key={label} className="flex items-center justify-between">
-                  <span className="text-xs text-slate-400">{label}</span>
-                  <span className={`text-xs font-semibold ${highlight ? "text-emerald-600" : "text-slate-700"}`}>{value}</span>
+            /*
+             * Don't show "Application submitted" to the job poster.
+             */
+            submitted &&
+            !isPoster && (
+              <Card className="p-5 border-emerald-200 bg-emerald-50">
+
+                <div className="flex items-center gap-3">
+
+                  <CheckCircle
+                    size={20}
+                    className="text-emerald-600 flex-shrink-0"
+                  />
+
+                  <div>
+
+                    <p className="font-semibold text-emerald-800 text-sm">
+                      Application submitted!
+                    </p>
+
+                    <p className="text-xs text-emerald-600 mt-0.5">
+                      The poster will review your
+                      application and get back to you.
+                    </p>
+
+                  </div>
+
                 </div>
-              ))}
+
+              </Card>
+            )
+
+          )}
+
+
+          {/* ═══════════════════════════════════════════════════
+              REVIEW
+          ═══════════════════════════════════════════════════ */}
+
+          {job.status === "COMPLETED" &&
+            currentUser &&
+            isParticipant &&
+            !reviewed && (
+
+              <Card className="p-5">
+
+                <p className="font-semibold text-slate-900 text-sm mb-3">
+                  Leave a Review
+                </p>
+
+                <p className="text-xs text-slate-400 mb-3">
+                  Rate your experience with the other
+                  participant.
+                </p>
+
+                <div className="flex gap-2 mb-3">
+
+                  {[1, 2, 3, 4, 5].map(
+                    (star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() =>
+                          setRating(star)
+                        }
+                        aria-label={`Rate ${star} stars`}
+                        className={`text-2xl transition-colors ${
+                          star <= rating
+                            ? "text-amber-400"
+                            : "text-slate-200"
+                        }`}
+                      >
+                        ★
+                      </button>
+                    )
+                  )}
+
+                </div>
+
+                <textarea
+                  value={reviewComment}
+                  onChange={(e) =>
+                    setReviewComment(
+                      e.target.value
+                    )
+                  }
+                  placeholder="How was the experience?"
+                  rows={3}
+                  maxLength={500}
+                  className="w-full p-3 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none mb-3"
+                />
+
+                <Btn
+                  onClick={handleReview}
+                  disabled={
+                    !rating ||
+                    reviewLoading
+                  }
+                  icon={
+                    reviewLoading ? (
+                      <Loader2
+                        size={14}
+                        className="animate-spin"
+                      />
+                    ) : undefined
+                  }
+                >
+                  {reviewLoading
+                    ? "Submitting..."
+                    : "Submit Review"}
+                </Btn>
+
+              </Card>
+
+            )}
+
+
+          {job.status === "COMPLETED" &&
+            reviewed && (
+
+              <Card className="p-5 border-emerald-200 bg-emerald-50">
+
+                <div className="flex items-center gap-3">
+
+                  <CheckCircle
+                    size={20}
+                    className="text-emerald-600 flex-shrink-0"
+                  />
+
+                  <div>
+
+                    <p className="font-semibold text-emerald-800 text-sm">
+                      Review submitted!
+                    </p>
+
+                    <p className="text-xs text-emerald-600 mt-0.5">
+                      Thanks for sharing your feedback.
+                    </p>
+
+                  </div>
+
+                </div>
+
+              </Card>
+
+            )}
+
+        </div>
+
+
+        {/* ═══════════════════════════════════════════════════
+            SIDEBAR
+        ═══════════════════════════════════════════════════ */}
+
+        <div className="flex flex-col gap-4">
+
+          {/* ───────────── POSTER ───────────── */}
+
+          <Card className="p-5">
+
+            <SectionLabel>
+              Posted by
+            </SectionLabel>
+
+            <div className="flex items-center gap-3 mb-3">
+
+              <Avatar
+                name={poster.name || "Unknown"}
+                size="lg"
+                role={poster.role}
+              />
+
+              <div>
+
+                <p className="font-bold text-slate-900 text-sm">
+                  {poster.name || "Unknown"}
+                </p>
+
+                <p className="text-xs text-slate-400">
+                  {poster.college ||
+                    poster.dept ||
+                    "GigGrad member"}
+                </p>
+
+                <div className="mt-1">
+                  <RatingStars
+                    rating={
+                      Number(
+                        poster.rating || 0
+                      )
+                    }
+                  />
+                </div>
+
+              </div>
+
             </div>
+
+
+            <div className="flex items-center gap-2">
+
+              <span
+                className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
+                  poster.role === "TEACHER" ||
+                  poster.role === "teacher"
+                    ? "bg-blue-50 text-blue-700 border border-blue-200"
+                    : poster.role === "ADMIN" ||
+                      poster.role === "admin"
+                    ? "bg-violet-50 text-violet-700 border border-violet-200"
+                    : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                }`}
+              >
+                {poster.role === "TEACHER" ||
+                poster.role === "teacher"
+                  ? "Faculty"
+                  : poster.role === "ADMIN" ||
+                    poster.role === "admin"
+                  ? "Admin"
+                  : "Student"}
+              </span>
+
+            </div>
+
           </Card>
 
-          {/* Payment info */}
-          <Card className="p-4 bg-blue-50 border-blue-200">
-            <div className="flex items-start gap-2">
-              <Shield size={14} className="text-blue-700 mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="text-xs font-bold text-blue-800 mb-1">Secure Payment</p>
-                <p className="text-xs text-blue-600 leading-relaxed">Payment is held by GigGrad and released only after you submit and the poster approves your work.</p>
-              </div>
+
+          {/* ───────────── JOB SUMMARY ───────────── */}
+
+          <Card className="p-5">
+
+            <SectionLabel>
+              Job Summary
+            </SectionLabel>
+
+            <div className="flex flex-col gap-3">
+
+              {[
+                {
+                  label: "Payment",
+                  value: `₹${Number(
+                    job.amount || 0
+                  ).toLocaleString("en-IN")}`,
+                  highlight: true,
+                },
+                {
+                  label: "Deadline",
+                  value: job.deadline
+                    ? new Date(
+                        job.deadline
+                      ).toLocaleDateString(
+                        "en-IN",
+                        {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        }
+                      )
+                    : "Not specified",
+                },
+                {
+                  label: "Category",
+                  value:
+                    job.category ||
+                    "General",
+                },
+                {
+                  label: "Status",
+                  value:
+                    STATUS_CFG[
+                      job.status
+                    ]?.label ||
+                    job.status ||
+                    "Unknown",
+                },
+                {
+                  label: "Applicants",
+                  value: `${applicantCount} applied`,
+                },
+              ].map(
+                ({
+                  label,
+                  value,
+                  highlight,
+                }) => (
+                  <div
+                    key={label}
+                    className="flex items-center justify-between gap-3"
+                  >
+
+                    <span className="text-xs text-slate-400">
+                      {label}
+                    </span>
+
+                    <span
+                      className={`text-xs font-semibold text-right ${
+                        highlight
+                          ? "text-emerald-600"
+                          : "text-slate-700"
+                      }`}
+                    >
+                      {value}
+                    </span>
+
+                  </div>
+                )
+              )}
+
             </div>
+
           </Card>
+
+
+          {/* ───────────── PAYMENT INFO ───────────── */}
+
+          <Card className="p-4 bg-blue-50 border-blue-200">
+
+            <div className="flex items-start gap-2">
+
+              <Shield
+                size={14}
+                className="text-blue-700 mt-0.5 flex-shrink-0"
+              />
+
+              <div>
+
+                <p className="text-xs font-bold text-blue-800 mb-1">
+                  Secure Payment
+                </p>
+
+                <p className="text-xs text-blue-600 leading-relaxed">
+                  Payment is held by GigGrad and
+                  released only after you submit
+                  and the poster approves your work.
+                </p>
+
+              </div>
+
+            </div>
+
+          </Card>
+
         </div>
+
       </div>
+
     </div>
   );
+}
+
+
+// ─────────────────────────────────────────────────────────────
+// Time ago helper
+// ─────────────────────────────────────────────────────────────
+
+function getTimeAgo(date) {
+  const seconds = Math.floor(
+    (Date.now() - date.getTime()) / 1000
+  );
+
+  if (seconds < 60) {
+    return "just now";
+  }
+
+  const minutes = Math.floor(
+    seconds / 60
+  );
+
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+
+  const hours = Math.floor(
+    minutes / 60
+  );
+
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+
+  const days = Math.floor(
+    hours / 24
+  );
+
+  if (days < 30) {
+    return `${days}d ago`;
+  }
+
+  const months = Math.floor(
+    days / 30
+  );
+
+  if (months < 12) {
+    return `${months}mo ago`;
+  }
+
+  return `${Math.floor(months / 12)}y ago`;
 }

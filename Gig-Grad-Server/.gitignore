@@ -1,0 +1,15 @@
+# Dependencies
+node_modules/
+
+# Environment
+.env
+.env.*
+
+# Generated files
+/src/generated/
+/prisma/generated/
+
+# Local editor/AI configuration
+.claude/
+.windsurf/
+.agents/

@@ -1,121 +1,436 @@
-import { useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
 
 import Card from "../components/ui/Card";
 import Btn from "../components/ui/Btn";
 import Avatar from "../components/ui/Avatar";
-import RatingStars from "../components/ui/RatingStars";
 import AppBadge from "../components/ui/AppBadge";
+import RatingStars from "../components/ui/RatingStars";
 import Loading from "../components/ui/Loading";
 import EmptyState from "../components/ui/EmptyState";
 
-import { useAsync } from "../hooks/useAsync";
-import { getJob } from "../services/jobs";
-import { getApplicants, decideApplicant } from "../services/applicants";
+import { appsAPI, jobsAPI } from "../lib/api";
 
-import { ChevronRight, Users, Award, Check, X, CheckCircle } from "lucide-react";
+import {
+  ChevronRight,
+  Users,
+  CheckCircle,
+  XCircle,
+} from "lucide-react";
 
-export default function ApplicantsPage() {
-  const { id } = useParams();
-  const navigate = useNavigate();
+export default function ApplicantsPage({
+  jobId,
+  setPage,
+  currentUser,
+}) {
+  const [job, setJob] = useState(null);
+  const [applicants, setApplicants] = useState([]);
 
-  const { data: job, loading: jobLoading } = useAsync(() => getJob(id), [id]);
-  const { data: fetched, loading: appsLoading } = useAsync(() => getApplicants(id), [id]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [actioning, setActioning] = useState(null);
 
-  // Decisions overlay the fetched data (id → new status), so no effect is needed
-  // to copy async data into state.
-  const [overrides, setOverrides] = useState({});
-  const [deciding, setDeciding] = useState(null);
+  // ─────────────────────────────────────────────
+  // Load job + applicants
+  // ─────────────────────────────────────────────
 
-  const applicants = (fetched || []).map(a => (overrides[a.id] ? { ...a, status: overrides[a.id] } : a));
-  const hired = applicants.find(a => a.status === "accepted");
+  useEffect(() => {
+    if (!jobId) {
+      setLoading(false);
+      setError("No job selected.");
+      return;
+    }
 
-  const decide = async (applicantId, decision) => {
-    setDeciding(applicantId + decision);
-    const next = await decideApplicant(id, applicantId, decision);
-    const map = {};
-    next.forEach(a => { map[a.id] = a.status; });
-    setOverrides(map);
-    setDeciding(null);
+    async function load() {
+      try {
+        setLoading(true);
+        setError("");
+
+        const [jobData, applicantsData] = await Promise.all([
+          jobsAPI.getOne(jobId),
+          appsAPI.forJob(jobId),
+        ]);
+
+        setJob(jobData || null);
+        setApplicants(
+          Array.isArray(applicantsData)
+            ? applicantsData
+            : []
+        );
+      } catch (err) {
+        console.error("ApplicantsPage load error:", err);
+
+        setError(
+          err.message || "Failed to load applicants."
+        );
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    load();
+  }, [jobId]);
+
+  // ─────────────────────────────────────────────
+  // Refresh applicants from backend
+  // ─────────────────────────────────────────────
+
+  const refreshApplicants = async () => {
+    if (!jobId) return;
+
+    const data = await appsAPI.forJob(jobId);
+
+    setApplicants(
+      Array.isArray(data)
+        ? data
+        : []
+    );
   };
 
-  if (jobLoading || appsLoading) return <Loading label="Loading applicants…" />;
+  // ─────────────────────────────────────────────
+  // Accept / Hire
+  // ─────────────────────────────────────────────
+
+const handleAccept = async (appId) => {
+  setActioning(appId);
+  setError("");
+
+  try {
+    // 1. Accept the application
+    await appsAPI.accept(appId);
+
+    // 2. Move the job from OPEN → IN_PROGRESS
+    await jobsAPI.status(jobId, "IN_PROGRESS");
+
+    // 3. Refresh applicants from backend
+    await refreshApplicants();
+
+    // 4. Refresh the job itself so UI shows new status
+    const updatedJob = await jobsAPI.getOne(jobId);
+    setJob(updatedJob);
+
+  } catch (err) {
+    console.error("Accept applicant error:", err);
+
+    setError(
+      err.message || "Failed to hire applicant."
+    );
+  } finally {
+    setActioning(null);
+  }
+};
+  // ─────────────────────────────────────────────
+  // Reject
+  // ─────────────────────────────────────────────
+
+  const handleReject = async (appId) => {
+    setActioning(appId);
+
+    try {
+      await appsAPI.reject(appId);
+
+      // Get actual state from backend
+      await refreshApplicants();
+    } catch (err) {
+      console.error("Reject applicant error:", err);
+
+      setError(
+        err.message || "Failed to reject applicant."
+      );
+    } finally {
+      setActioning(null);
+    }
+  };
+
+  // ─────────────────────────────────────────────
+  // No job selected
+  // ─────────────────────────────────────────────
+
+  if (!jobId) {
+    return (
+      <div className="max-w-xl mx-auto px-4 py-20 text-center">
+        <h2 className="text-xl font-bold text-slate-900 mb-2">
+          No job selected
+        </h2>
+
+        <p className="text-sm text-slate-500 mb-5">
+          Select a job from My Jobs to review its applicants.
+        </p>
+
+        <button
+          onClick={() => setPage("my-jobs")}
+          className="text-sm font-semibold text-blue-700 hover:underline"
+        >
+          ← Back to My Jobs
+        </button>
+      </div>
+    );
+  }
+
+  // ─────────────────────────────────────────────
+  // Loading
+  // ─────────────────────────────────────────────
+
+  if (loading) {
+    return <Loading label="Loading applicants…" />;
+  }
+
+  const hasHired = applicants.some(
+    (a) =>
+      String(a.status || "").toUpperCase() === "ACCEPTED"
+  );
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-6">
-      {/* Back */}
-      <button onClick={() => navigate("/my-jobs")} className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900 mb-5 transition-colors">
-        <ChevronRight size={14} className="rotate-180" /> Back to My Jobs
+    <div className="max-w-4xl mx-auto px-4 py-6">
+
+      {/* Back button */}
+      <button
+        onClick={() => setPage("my-jobs")}
+        className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900 mb-5 transition-colors"
+      >
+        <ChevronRight
+          size={14}
+          className="rotate-180"
+        />
+
+        Back to My Jobs
       </button>
 
-      {/* Job header */}
-      <div className="mb-6">
-        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Applicants for</p>
-        <h1 className="text-xl font-bold text-slate-900 leading-snug">{job?.title || "This job"}</h1>
-        <p className="text-sm text-slate-400 mt-1 flex items-center gap-1">
-          <Users size={12} /> {applicants.length} applicant{applicants.length !== 1 ? "s" : ""}
-          {job && <> · ₹{job.amount}</>}
+      {/* Job summary */}
+      <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+        <p className="text-xs text-blue-500 font-semibold uppercase tracking-wider mb-1">
+          Reviewing applicants for
         </p>
+
+        <h1 className="text-lg font-bold text-slate-900 leading-snug">
+          {job?.title || "This job"}
+        </h1>
+
+        <div className="flex items-center gap-3 mt-2 flex-wrap">
+          {job?.category && (
+            <span className="text-xs text-slate-500">
+              {job.category}
+            </span>
+          )}
+
+          {job?.amount !== undefined && (
+            <span className="text-xs font-bold text-emerald-600">
+              ₹{job.amount}
+            </span>
+          )}
+
+          <span className="text-xs text-slate-400">
+            {applicants.length} applicant
+            {applicants.length !== 1 ? "s" : ""}
+          </span>
+        </div>
       </div>
 
       {/* Hired banner */}
-      {hired && (
-        <Card className="p-4 mb-5 border-emerald-200 bg-emerald-50">
-          <div className="flex items-center gap-3">
-            <CheckCircle size={20} className="text-emerald-600 flex-shrink-0" />
-            <div>
-              <p className="font-semibold text-emerald-800 text-sm">You hired {hired.applicant.name}</p>
-              <p className="text-xs text-emerald-600 mt-0.5">The job moves to In Progress. Payment is held securely until you approve the work.</p>
-            </div>
+      {hasHired && (
+        <div className="mb-5 p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-3">
+          <CheckCircle
+            size={18}
+            className="text-emerald-600 flex-shrink-0"
+          />
+
+          <div>
+            <p className="text-sm font-semibold text-emerald-800">
+              You've hired a student for this job
+            </p>
+
+            <p className="text-xs text-emerald-600 mt-0.5">
+              The job is now in progress. Other applicants have
+              been notified.
+            </p>
           </div>
-        </Card>
+        </div>
       )}
 
-      {/* Applicant list */}
-      {applicants.length === 0 ? (
-        <EmptyState icon={Users} title="No applicants yet" subtitle="Share the job — applications will appear here as students apply." />
-      ) : (
-        <div className="flex flex-col gap-3">
-          {applicants.map(({ id: appId, applicant, status, appliedAgo, coverNote }) => (
-            <Card key={appId} className={`p-5 ${status === "rejected" ? "opacity-60" : ""}`}>
-              <div className="flex items-start gap-4">
-                <Avatar name={applicant.name} size="md" role={applicant.role} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-2 flex-wrap">
-                    <div>
-                      <h3 className="font-semibold text-slate-900 text-sm">{applicant.name}</h3>
-                      <div className="flex items-center gap-3 mt-1">
-                        <RatingStars rating={applicant.rating} />
-                        <span className="text-xs text-slate-400 flex items-center gap-1"><Award size={11} /> {applicant.jobsDone} jobs done</span>
-                        <span className="text-xs text-slate-400">· {appliedAgo}</span>
+      {/* Error */}
+      {error && (
+        <div className="mb-5 p-4 bg-red-50 border border-red-200 rounded-xl">
+          <p className="text-sm font-semibold text-red-700">
+            Something went wrong
+          </p>
+
+          <p className="text-xs text-red-600 mt-1">
+            {error}
+          </p>
+        </div>
+      )}
+
+      {/* Empty */}
+      {!error && applicants.length === 0 && (
+        <EmptyState
+          icon={Users}
+          title="No applications yet"
+          subtitle="Students will appear here once they apply to this job."
+        />
+      )}
+
+      {/* Applicant cards */}
+      {applicants.length > 0 && (
+        <div className="flex flex-col gap-4">
+
+          {applicants.map((app) => {
+            const applicant = app.applicant || {};
+
+            const status =
+              String(app.status || "PENDING").toUpperCase();
+
+            const statusKey =
+              status.toLowerCase();
+
+            const isActioning =
+              actioning === app.id;
+
+            const isAccepted =
+              status === "ACCEPTED";
+
+            const isRejected =
+              status === "REJECTED";
+
+            const isPending =
+              status === "PENDING";
+
+            return (
+              <Card
+                key={app.id}
+                className={`p-5 ${
+                  isAccepted
+                    ? "border-emerald-300 bg-emerald-50/30"
+                    : isRejected
+                    ? "border-slate-200 opacity-60"
+                    : ""
+                }`}
+              >
+                <div className="flex items-start gap-4">
+
+                  {/* Avatar */}
+                  <Avatar
+                    name={applicant.name || "?"}
+                    size="lg"
+                    role="student"
+                  />
+
+                  <div className="flex-1 min-w-0">
+
+                    {/* Name + status */}
+                    <div className="flex items-start justify-between gap-2 flex-wrap">
+
+                      <div>
+                        <h3 className="font-semibold text-slate-900 text-sm">
+                          {applicant.name || "Unknown Student"}
+                        </h3>
+
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          <RatingStars
+                            rating={
+                              applicant.rating || 0
+                            }
+                          />
+
+                          {applicant.college && (
+                            <span className="text-xs text-slate-400">
+                              {applicant.college}
+                            </span>
+                          )}
+                        </div>
                       </div>
+
+                      <AppBadge
+                        status={statusKey}
+                      />
                     </div>
-                    {status !== "pending" && <AppBadge status={status} />}
+
+                    {/* Cover note */}
+                    {app.coverNote && (
+                      <p className="mt-3 text-xs text-slate-600 leading-relaxed bg-slate-50 border border-slate-100 rounded-lg p-3">
+                        "{app.coverNote}"
+                      </p>
+                    )}
+
+                    {/* Bio */}
+                    {applicant.bio && (
+                      <p className="mt-2 text-xs text-slate-400 italic">
+                        {applicant.bio}
+                      </p>
+                    )}
+
+                    {/* Applied date */}
+                    {app.appliedAt && (
+                      <p className="mt-2 text-xs text-slate-400">
+                        Applied{" "}
+                        {new Date(
+                          app.appliedAt
+                        ).toLocaleDateString(
+                          "en-IN",
+                          {
+                            day: "numeric",
+                            month: "short",
+                            year: "numeric",
+                          }
+                        )}
+                      </p>
+                    )}
+
+                    {/* Actions */}
+                    {!hasHired &&
+                      isPending && (
+                        <div className="flex items-center gap-2 mt-4">
+
+                          <Btn
+                            size="sm"
+                            variant="success"
+                            disabled={!!actioning}
+                            onClick={() =>
+                              handleAccept(app.id)
+                            }
+                            icon={
+                              <CheckCircle size={13} />
+                            }
+                          >
+                            {isActioning
+                              ? "Hiring…"
+                              : "Hire"}
+                          </Btn>
+
+                          <Btn
+                            size="sm"
+                            variant="secondary"
+                            disabled={!!actioning}
+                            onClick={() =>
+                              handleReject(app.id)
+                            }
+                            icon={
+                              <XCircle size={13} />
+                            }
+                          >
+                            {isActioning
+                              ? "Rejecting…"
+                              : "Reject"}
+                          </Btn>
+
+                        </div>
+                      )}
+
+                    {/* Accepted */}
+                    {isAccepted && (
+                      <div className="mt-3 flex items-center gap-2 text-emerald-700">
+                        <CheckCircle size={14} />
+
+                        <span className="text-xs font-semibold">
+                          Hired for this job
+                        </span>
+                      </div>
+                    )}
+
                   </div>
-
-                  <p className="text-xs text-slate-600 mt-3 leading-relaxed bg-slate-50 rounded-lg p-3 border border-slate-100">
-                    "{coverNote}"
-                  </p>
-
-                  {/* Actions — only while a decision is still open */}
-                  {status === "pending" && !hired && (
-                    <div className="flex items-center gap-2 mt-3">
-                      <Btn size="sm" variant="success" icon={<Check size={12} />}
-                        disabled={deciding === appId + "accept"}
-                        onClick={() => decide(appId, "accept")}>
-                        {deciding === appId + "accept" ? "Hiring…" : "Accept & Hire"}
-                      </Btn>
-                      <Btn size="sm" variant="ghost" icon={<X size={12} />}
-                        disabled={deciding === appId + "reject"}
-                        onClick={() => decide(appId, "reject")}>
-                        Reject
-                      </Btn>
-                    </div>
-                  )}
                 </div>
-              </div>
-            </Card>
-          ))}
+              </Card>
+            );
+          })}
+
         </div>
       )}
     </div>

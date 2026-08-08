@@ -1,108 +1,232 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+
+import { jobsAPI } from "../lib/api";
 
 import JobCard from "../components/JobCard";
 import Loading from "../components/ui/Loading";
 import EmptyState from "../components/ui/EmptyState";
 
 import { CATEGORIES } from "../data/constants";
-import { useAsync } from "../hooks/useAsync";
-import { getJobs } from "../services/jobs";
 
 import {
   Search,
-  Briefcase
+  Briefcase,
 } from "lucide-react";
 
-export default function JobsPage() {
-  const navigate = useNavigate();
-  const { data: jobs, loading } = useAsync(getJobs);
+export default function JobsPage({
+  setPage,
+  setSelectedJob,
+}) {
+  const [jobs, setJobs] = useState([]);
+  const [loadingJobs, setLoadingJobs] = useState(true);
+  const [jobsError, setJobsError] = useState(null);
+
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
   const [sortBy, setSortBy] = useState("newest");
   const [onlyOpen, setOnlyOpen] = useState(false);
 
-  const filtered = (jobs || []).filter(j => {
-    const matchCat   = activeCategory === "All" || j.category === activeCategory;
-    const matchSearch = j.title.toLowerCase().includes(search.toLowerCase()) ||
-                        j.description.toLowerCase().includes(search.toLowerCase());
-    const matchOpen  = !onlyOpen || j.status === "open";
-    return matchCat && matchSearch && matchOpen;
-  }).sort((a, b) => {
-    if (sortBy === "amount-high") return b.amount - a.amount;
-    if (sortBy === "amount-low")  return a.amount - b.amount;
-    return 0;
+  // ── Load REAL jobs from backend ──────────────────────────────────────────
+  useEffect(() => {
+    async function loadJobs() {
+      try {
+        setLoadingJobs(true);
+        setJobsError(null);
+
+        const params = {
+          sort: sortBy,
+        };
+
+        if (activeCategory !== "All") {
+          params.category = activeCategory;
+        }
+
+        if (search.trim()) {
+          params.search = search.trim();
+        }
+
+        const data = await jobsAPI.getAll(params);
+
+        setJobs(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error("Failed to load jobs:", err);
+        setJobsError(
+          err.message || "Failed to load jobs"
+        );
+      } finally {
+        setLoadingJobs(false);
+      }
+    }
+
+    loadJobs();
+  }, [activeCategory, search, sortBy]);
+
+  // ── Frontend open filter ─────────────────────────────────────────────────
+  const filtered = jobs.filter((job) => {
+    if (!onlyOpen) return true;
+
+    return job.status === "OPEN";
   });
 
+  // ── Open job detail ──────────────────────────────────────────────────────
+  const openJob = (job) => {
+    setSelectedJob(job);
+    setPage("job-detail");
+  };
+
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6">
-      {/* Header */}
+    <div className="max-w-5xl mx-auto px-4 py-8">
+
+      {/* ── Header ─────────────────────────────────────────────────────── */}
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900 mb-1">Browse Jobs</h1>
-        <p className="text-slate-500 text-sm">
-          {loading ? "Loading jobs…" : `${filtered.length} jobs available on your campus`}
+        <h1 className="text-2xl font-extrabold text-slate-900">
+          Browse Jobs
+        </h1>
+
+        <p className="text-sm text-slate-500 mt-1">
+          {loadingJobs
+            ? "Loading jobs…"
+            : `${filtered.length} jobs available on your campus`}
         </p>
       </div>
 
-      {/* Search + Controls */}
+      {/* ── Search + Controls ──────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row gap-3 mb-5">
+
+        {/* Search */}
         <div className="relative flex-1">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <Search
+            size={15}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+          />
+
           <input
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={(e) =>
+              setSearch(e.target.value)
+            }
             placeholder="Search jobs by title or keyword..."
             className="w-full pl-9 pr-4 py-2.5 text-sm border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           />
         </div>
+
+        {/* Sort */}
         <select
           value={sortBy}
-          onChange={e => setSortBy(e.target.value)}
+          onChange={(e) =>
+            setSortBy(e.target.value)
+          }
           className="px-3 py-2.5 text-sm border border-slate-200 rounded-lg bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
         >
-          <option value="newest">Newest first</option>
-          <option value="amount-high">Highest pay</option>
-          <option value="amount-low">Lowest pay</option>
+          <option value="newest">
+            Newest first
+          </option>
+
+          <option value="amount-high">
+            Highest pay
+          </option>
+
+          <option value="amount-low">
+            Lowest pay
+          </option>
         </select>
+
+        {/* Open only */}
         <label className="flex items-center gap-2 px-4 py-2.5 border border-slate-200 rounded-lg bg-white cursor-pointer hover:bg-slate-50 transition-colors">
-          <input type="checkbox" checked={onlyOpen} onChange={e => setOnlyOpen(e.target.checked)} className="accent-blue-700" />
-          <span className="text-sm text-slate-700 font-medium whitespace-nowrap">Open only</span>
+          <input
+            type="checkbox"
+            checked={onlyOpen}
+            onChange={(e) =>
+              setOnlyOpen(e.target.checked)
+            }
+            className="accent-blue-700"
+          />
+
+          <span className="text-sm text-slate-700 font-medium whitespace-nowrap">
+            Open only
+          </span>
         </label>
       </div>
 
-      {/* Category chips */}
+      {/* ── Category chips ──────────────────────────────────────────────── */}
       <div className="flex gap-2 mb-6 overflow-x-auto pb-1">
-        {CATEGORIES.map(cat => (
+        {CATEGORIES.map((category) => (
           <button
-            key={cat}
-            onClick={() => setActiveCategory(cat)}
+            key={category}
+            onClick={() =>
+              setActiveCategory(category)
+            }
             className={`whitespace-nowrap px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
-              activeCategory === cat
+              activeCategory === category
                 ? "bg-blue-700 text-white border-blue-700"
                 : "bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50"
             }`}
           >
-            {cat}
+            {category}
           </button>
         ))}
       </div>
 
-      {/* Grid */}
-      {loading ? (
-        <Loading label="Loading jobs…" />
-      ) : filtered.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map(job => (
-            <JobCard key={job.id} job={job} onClick={() => navigate(`/jobs/${job.id}`)} />
-          ))}
+      {/* ── Error ───────────────────────────────────────────────────────── */}
+      {jobsError && (
+        <div className="py-16 text-center">
+          <div className="max-w-md mx-auto bg-red-50 border border-red-200 rounded-xl p-5">
+            <p className="text-red-600 font-semibold mb-1">
+              Failed to load jobs
+            </p>
+
+            <p className="text-sm text-red-500">
+              {jobsError}
+            </p>
+
+            <button
+              onClick={() =>
+                window.location.reload()
+              }
+              className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700"
+            >
+              Retry
+            </button>
+          </div>
         </div>
-      ) : (
-        <EmptyState
-          icon={Briefcase}
-          title="No jobs found"
-          subtitle="Try a different category or search term"
-        />
       )}
+
+      {/* ── Loading ────────────────────────────────────────────────────── */}
+      {loadingJobs && !jobsError && (
+        <Loading label="Loading jobs…" />
+      )}
+
+      {/* ── Jobs ───────────────────────────────────────────────────────── */}
+      {!loadingJobs &&
+        !jobsError &&
+        filtered.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filtered.map((job) => (
+              <JobCard
+                key={job.id}
+                job={job}
+                onClick={() => openJob(job)}
+              />
+            ))}
+          </div>
+        )}
+
+      {/* ── Empty ───────────────────────────────────────────────────────── */}
+      {!loadingJobs &&
+        !jobsError &&
+        filtered.length === 0 && (
+          <EmptyState
+            icon={Briefcase}
+            title="No jobs found"
+            subtitle={
+              search ||
+              activeCategory !== "All" ||
+              onlyOpen
+                ? "Try a different search or filter."
+                : "There are no jobs posted yet."
+            }
+          />
+        )}
     </div>
   );
 }

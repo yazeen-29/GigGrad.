@@ -1,0 +1,173 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL")
+}
+
+enum Role {
+  STUDENT
+  TEACHER
+  ADMIN
+}
+
+enum JobStatus {
+  OPEN
+  IN_PROGRESS
+  PENDING_APPROVAL
+  COMPLETED
+  DISPUTED
+  CANCELLED
+}
+
+enum ApplicationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum DisputeStatus {
+  OPEN
+  RESOLVED
+}
+
+enum PaymentStatus {
+  HELD
+  RELEASED
+  REFUNDED
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      Role     @default(STUDENT)
+  college   String
+  avatarUrl String?
+  bio       String?
+  rating    Float    @default(0)
+  createdAt DateTime @default(now())
+
+  jobsPosted       Job[]         @relation("JobPoster")
+  jobsWorked       Job[]         @relation("JobWorker")
+  applications     Application[]
+  messagesSent     Message[]     @relation("Sender")
+  messagesReceived Message[]     @relation("Receiver")
+  disputesRaised   Dispute[]     @relation("DisputeRaiser")
+  disputesResolved Dispute[]     @relation("DisputeResolver")
+  reviewsGiven     Review[]      @relation("Reviewer")
+  reviewsReceived  Review[]      @relation("Reviewee")
+  payments         Payment[]
+}
+
+model Job {
+  id           String    @id @default(uuid())
+  title        String
+  description  String
+  category     String
+  amount       Float
+  status       JobStatus @default(OPEN)
+  urgent       Boolean   @default(false)
+  fileUrl      String?
+  deadline     DateTime
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  postedById   String
+  postedBy     User   @relation("JobPoster", fields: [postedById],   references: [id])
+
+  assignedToId String?
+  assignedTo   User?  @relation("JobWorker", fields: [assignedToId], references: [id])
+
+  applications Application[]
+  messages     Message[]
+  dispute      Dispute?
+  reviews      Review[]
+  payment      Payment?
+}
+
+model Application {
+  id          String            @id @default(uuid())
+  coverNote   String?
+  status      ApplicationStatus @default(PENDING)
+  appliedAt   DateTime          @default(now())
+
+  jobId       String
+  job         Job  @relation(fields: [jobId],       references: [id])
+
+  applicantId String
+  applicant   User @relation(fields: [applicantId], references: [id])
+
+  @@unique([jobId, applicantId])
+}
+
+model Message {
+  id         String   @id @default(uuid())
+  content    String
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  jobId      String
+  job        Job  @relation(fields: [jobId],       references: [id])
+
+  senderId   String
+  sender     User @relation("Sender",   fields: [senderId],   references: [id])
+
+  receiverId String
+  receiver   User @relation("Receiver", fields: [receiverId], references: [id])
+}
+
+model Dispute {
+  id           String        @id @default(uuid())
+  reason       String
+  status       DisputeStatus @default(OPEN)
+  adminNote    String?
+  createdAt    DateTime      @default(now())
+  resolvedAt   DateTime?
+
+  jobId        String  @unique
+  job          Job     @relation(fields: [jobId],         references: [id])
+
+  raisedById   String
+  raisedBy     User    @relation("DisputeRaiser",   fields: [raisedById],   references: [id])
+
+  resolvedById String?
+  resolvedBy   User?   @relation("DisputeResolver", fields: [resolvedById], references: [id])
+}
+
+model Review {
+  id         String   @id @default(uuid())
+  rating     Int
+  comment    String?
+  createdAt  DateTime @default(now())
+
+  jobId      String
+  job        Job  @relation(fields: [jobId],       references: [id])
+
+  reviewerId String
+  reviewer   User @relation("Reviewer", fields: [reviewerId], references: [id])
+
+  revieweeId String
+  reviewee   User @relation("Reviewee", fields: [revieweeId], references: [id])
+
+  @@unique([jobId, reviewerId])
+}
+
+model Payment {
+  id         String        @id @default(uuid())
+  amount     Float
+  status     PaymentStatus @default(HELD)
+  gatewayRef String?
+  releasedAt DateTime?
+  createdAt  DateTime      @default(now())
+
+  jobId      String @unique
+  job        Job    @relation(fields: [jobId],   references: [id])
+
+  payerId    String
+  payer      User   @relation(fields: [payerId], references: [id])
+}

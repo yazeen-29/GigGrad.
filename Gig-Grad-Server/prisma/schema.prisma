@@ -5,7 +5,7 @@ generator client {
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
-  directUrl = env("DATABASE_URL")
+
 }
 
 enum Role {
@@ -46,6 +46,10 @@ model User {
   email     String   @unique
   password  String
   role      Role     @default(STUDENT)
+  posterStatus String @default("none")
+  posterType String?
+  posterReason String?
+  skills String[] @default([])
   college   String
   avatarUrl String?
   bio       String?
@@ -62,6 +66,9 @@ model User {
   reviewsGiven     Review[]      @relation("Reviewer")
   reviewsReceived  Review[]      @relation("Reviewee")
   payments         Payment[]
+  scholarshipTracking ScholarshipTracking[]
+
+  @@index([posterStatus, createdAt])
 }
 
 model Job {
@@ -69,7 +76,7 @@ model Job {
   title        String
   description  String
   category     String
-  amount       Float
+  amount       Decimal @db.Decimal(10, 2)
   status       JobStatus @default(OPEN)
   urgent       Boolean   @default(false)
   fileUrl      String?
@@ -88,6 +95,11 @@ model Job {
   dispute      Dispute?
   reviews      Review[]
   payment      Payment?
+
+  @@index([status, createdAt])
+  @@index([status, deadline])
+  @@index([postedById, createdAt])
+  @@index([assignedToId, status])
 }
 
 model Application {
@@ -103,6 +115,8 @@ model Application {
   applicant   User @relation(fields: [applicantId], references: [id])
 
   @@unique([jobId, applicantId])
+  @@index([applicantId, appliedAt])
+  @@index([jobId, status])
 }
 
 model Message {
@@ -119,6 +133,9 @@ model Message {
 
   receiverId String
   receiver   User @relation("Receiver", fields: [receiverId], references: [id])
+
+  @@index([jobId, createdAt])
+  @@index([receiverId, isRead])
 }
 
 model Dispute {
@@ -137,6 +154,8 @@ model Dispute {
 
   resolvedById String?
   resolvedBy   User?   @relation("DisputeResolver", fields: [resolvedById], references: [id])
+
+  @@index([status, createdAt])
 }
 
 model Review {
@@ -155,11 +174,12 @@ model Review {
   reviewee   User @relation("Reviewee", fields: [revieweeId], references: [id])
 
   @@unique([jobId, reviewerId])
+  @@index([revieweeId])
 }
 
 model Payment {
   id         String        @id @default(uuid())
-  amount     Float
+  amount     Decimal @db.Decimal(10, 2)
   status     PaymentStatus @default(HELD)
   gatewayRef String?
   releasedAt DateTime?
@@ -170,4 +190,19 @@ model Payment {
 
   payerId    String
   payer      User   @relation(fields: [payerId], references: [id])
+}
+
+model ScholarshipTracking {
+  id String @id @default(uuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scholarshipId String
+  status String @default("SAVED")
+  notes String @default("")
+  remindOn DateTime?
+  documents String[] @default([])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([userId, scholarshipId])
+  @@index([userId, remindOn])
 }

@@ -1,62 +1,65 @@
-const router      = require("express").Router();
-const prisma      = require("../lib/prisma");
+const router = require("express").Router();
+const prisma = require("../lib/prisma");
 const requireAuth = require("../middleware/auth");
-
+const { fail, text } = require("../lib/validation");
 router.post("/", requireAuth, async (req, res) => {
-  try {
-    const { jobId, reason } = req.body;
-    if (!jobId || !reason) return res.status(400).json({ error: "jobId and reason required" });
-    const job = await prisma.job.findUnique({ where: { id: jobId } });
-    if (!job) return res.status(404).json({ error: "Job not found" });
-    const isInvolved = job.postedById === req.user.id || job.assignedToId === req.user.id;
-    if (!isInvolved) return res.status(403).json({ error: "Not authorized" });
-    const [dispute] = await prisma.$transaction([
-      prisma.dispute.create({ data: { jobId, reason, raisedById: req.user.id } }),
-      prisma.job.update({ where: { id: jobId }, data: { status: "DISPUTED" } }),
-    ]);
-    res.status(201).json(dispute);
-  } catch (err) {
-    if (err.code === "P2002") return res.status(400).json({ error: "Dispute already exists" });
-    res.status(500).json({ error: "Failed to raise dispute" });
-  }
+  const jobId = text(req.body.jobId, "Job ID", 1, 100),
+    reason = text(req.body.reason, "Reason", 10, 2000);
+  const job = await prisma.job.findUnique({ where: { id: jobId } });
+  if (!job) fail("Job not found", 404);
+  if (!["IN_PROGRESS", "PENDING_APPROVAL"].includes(job.status))
+    fail("Only active work can be disputed", 409);
+  if (job.postedById !== req.user.id && job.assignedToId !== req.user.id)
+    fail("Not authorized", 403);
+  const [dispute] = await prisma.$transaction([
+    prisma.dispute.create({ data: { jobId, reason, raisedById: req.user.id } }),
+    prisma.job.update({
+      where: { id: jobId, status: job.status },
+      data: { status: "DISPUTED" },
+    }),
+  ]);
+  res.status(201).json(dispute);
 });
-
 router.get("/", requireAuth, async (req, res) => {
-  try {
-    if (req.user.role !== "ADMIN") return res.status(403).json({ error: "Admin only" });
-    const disputes = await prisma.dispute.findMany({
-      where:   { status: "OPEN" },
+  if (req.user.role !== "ADMIN") fail("Admin only", 403);
+  res.json(
+    await prisma.dispute.findMany({
+      where: { status: "OPEN" },
       include: {
-        job:      { select: { id: true, title: true, amount: true } },
-        raisedBy: { select: { id: true, name: true, role: true } }
+        job: { select: { id: true, title: true, amount: true } },
+        raisedBy: { select: { id: true, name: true, role: true } },
       },
-      orderBy: { createdAt: "desc" }
-    });
-    res.json(disputes);
-  } catch (err) {
-    res.status(500).json({ error: "Failed to load disputes" });
-  }
+      orderBy: { createdAt: "desc" },
+      take: 200,
+    }),
+  );
 });
-
 router.patch("/:id/resolve", requireAuth, async (req, res) => {
-  try {
-    if (req.user.role !== "ADMIN") return res.status(403).json({ error: "Admin only" });
-    const { outcome, adminNote } = req.body;
-    if (!["COMPLETE","CANCEL"].includes(outcome)) return res.status(400).json({ error: "outcome must be COMPLETE or CANCEL" });
-    const dispute = await prisma.dispute.findUnique({ where: { id: req.params.id } });
-    if (!dispute) return res.status(404).json({ error: "Dispute not found" });
-    const newStatus = outcome === "COMPLETE" ? "COMPLETED" : "CANCELLED";
-    await prisma.$transaction([
-      prisma.dispute.update({
-        where: { id: req.params.id },
-        data:  { status: "RESOLVED", adminNote: adminNote || "", resolvedById: req.user.id, resolvedAt: new Date() }
-      }),
-      prisma.job.update({ where: { id: dispute.jobId }, data: { status: newStatus } }),
-    ]);
-    res.json({ message: `Resolved — job marked ${newStatus}` });
-  } catch (err) {
-    res.status(500).json({ error: "Failed to resolve dispute" });
-  }
+  if (req.user.role !== "ADMIN") fail("Admin only", 403);
+  if (!["COMPLETE", "CANCEL"].includes(req.body.outcome))
+    fail("outcome must be COMPLETE or CANCEL");
+  const adminNote = text(req.body.adminNote, "Decision note", 10, 2000);
+  const dispute = await prisma.dispute.findUnique({
+    where: { id: req.params.id },
+  });
+  if (!dispute) fail("Dispute not found", 404);
+  if (dispute.status !== "OPEN") fail("Dispute already resolved", 409);
+  const status = req.body.outcome === "COMPLETE" ? "COMPLETED" : "CANCELLED";
+  await prisma.$transaction([
+    prisma.dispute.update({
+      where: { id: dispute.id, status: "OPEN" },
+      data: {
+        status: "RESOLVED",
+        adminNote,
+        resolvedById: req.user.id,
+        resolvedAt: new Date(),
+      },
+    }),
+    prisma.job.update({
+      where: { id: dispute.jobId, status: "DISPUTED" },
+      data: { status },
+    }),
+  ]);
+  res.json({ message: `Resolved — job marked ${status}` });
 });
-
 module.exports = router;

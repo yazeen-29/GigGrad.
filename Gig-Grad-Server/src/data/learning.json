@@ -1,0 +1,140 @@
+[
+  {
+    "id": "design",
+    "title": "Design that gets noticed",
+    "category": "Design",
+    "skills": ["Design", "Canva", "Figma", "Typography"],
+    "description": "Turn a campus brief into a clear, consistent visual story.",
+    "resource": {
+      "title": "Canva Design School",
+      "url": "https://www.canva.com/design-school/courses/",
+      "provider": "Canva"
+    },
+    "lessons": [
+      "Learn hierarchy, contrast and spacing",
+      "Create a reusable visual system",
+      "Export and check your deliverables"
+    ],
+    "brief": "Design a poster and three social posts for a fictional campus festival. Include the date, venue and a clear call to action.",
+    "checks": [
+      "Readable on a phone",
+      "Consistent type and colours",
+      "Exported poster and social sizes"
+    ]
+  },
+  {
+    "id": "web",
+    "title": "Build your first client website",
+    "category": "Coding",
+    "skills": ["Coding", "HTML", "CSS", "JavaScript", "React"],
+    "description": "Build accessible pages that work beautifully on a phone.",
+    "resource": {
+      "title": "Responsive design fundamentals",
+      "url": "https://developer.mozilla.org/en-US/docs/Learn_web_development/Core/CSS_layout/Responsive_Design",
+      "provider": "MDN"
+    },
+    "lessons": [
+      "Build semantic HTML and accessible forms",
+      "Practice responsive CSS layouts",
+      "Test, polish and publish a sample"
+    ],
+    "brief": "Build a responsive registration page for a fictional college workshop. Include a schedule, clear labels and useful validation.",
+    "checks": [
+      "Keyboard navigation works",
+      "No mobile horizontal overflow",
+      "README explains how to run it"
+    ]
+  },
+  {
+    "id": "data",
+    "title": "Make messy data useful",
+    "category": "Data Entry",
+    "skills": ["Data Entry", "Excel", "Spreadsheets", "Data Analysis"],
+    "description": "Clean spreadsheets, validate entries and tell a simple data story.",
+    "resource": {
+      "title": "Excel learning resources",
+      "url": "https://learn.microsoft.com/en-us/training/browse/?products=office-excel",
+      "provider": "Microsoft Learn"
+    },
+    "lessons": [
+      "Learn tables, sorting and validation",
+      "Practice formulas and duplicate checks",
+      "Summarize results with a clear chart"
+    ],
+    "brief": "Create a fictional 50-row event registration sheet. Clean duplicates, validate email formats and summarize registrations by department.",
+    "checks": [
+      "Use fictional data only",
+      "Document cleaning decisions",
+      "Include a summary and chart"
+    ]
+  },
+  {
+    "id": "documents",
+    "title": "Deliver polished documents",
+    "category": "Document Formatting",
+    "skills": ["Document Formatting", "Word", "Writing"],
+    "description": "Make reports consistent, readable and ready to hand over.",
+    "resource": {
+      "title": "Create a document in Word",
+      "url": "https://support.microsoft.com/en-us/word/training/create-a-document-in-word",
+      "provider": "Microsoft Support"
+    },
+    "lessons": [
+      "Use heading styles and page structure",
+      "Format tables and a contents page",
+      "Proofread and export a clean PDF"
+    ],
+    "brief": "Format a fictional five-page club report with headings, a contents page, a budget table and page numbers.",
+    "checks": [
+      "Consistent heading styles",
+      "Updated contents page",
+      "PDF checked for broken layouts"
+    ]
+  },
+  {
+    "id": "video",
+    "title": "Edit a story worth watching",
+    "category": "Video Editing",
+    "skills": ["Video Editing", "DaVinci Resolve", "Premiere Pro"],
+    "description": "Build a short edit with clean sound, pacing and captions.",
+    "resource": {
+      "title": "DaVinci Resolve training",
+      "url": "https://www.blackmagicdesign.com/products/davinciresolve/training",
+      "provider": "Blackmagic Design"
+    },
+    "lessons": [
+      "Learn timelines, cuts and pacing",
+      "Balance audio and add captions",
+      "Export a short social edit"
+    ],
+    "brief": "Edit a 30-second campus-event teaser using your own or licensed footage. Deliver a vertical cut with captions.",
+    "checks": [
+      "Footage and music rights checked",
+      "Captions are readable",
+      "Audio is balanced"
+    ]
+  },
+  {
+    "id": "content",
+    "title": "Write for a real audience",
+    "category": "Writing & Marketing",
+    "skills": ["Writing", "Marketing", "Content Writing", "Copywriting"],
+    "description": "Turn an unclear idea into focused, useful content.",
+    "resource": {
+      "title": "Content marketing course",
+      "url": "https://academy.hubspot.com/courses/content-marketing",
+      "provider": "HubSpot Academy"
+    },
+    "lessons": [
+      "Define an audience and a useful message",
+      "Draft a headline and structured copy",
+      "Edit for clarity and check claims"
+    ],
+    "brief": "Write a 400-word guide and three social captions promoting a fictional student workshop. Include one clear next step.",
+    "checks": [
+      "Audience and purpose stated",
+      "Claims and spelling checked",
+      "Clear call to action"
+    ]
+  }
+]

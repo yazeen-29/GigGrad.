@@ -1,73 +1,99 @@
-const router      = require("express").Router();
-const prisma      = require("../lib/prisma");
+const router = require("express").Router();
+const prisma = require("../lib/prisma");
 const requireAuth = require("../middleware/auth");
-
-router.post("/", requireAuth, async (req, res) => {
-  try {
-    const { jobId, coverNote } = req.body;
-    if (!jobId) return res.status(400).json({ error: "Job ID required" });
-    const job = await prisma.job.findUnique({ where: { id: jobId } });
-    if (!job)                       return res.status(404).json({ error: "Job not found" });
-    if (job.status !== "OPEN")      return res.status(400).json({ error: "Job is not open" });
-    if (job.postedById === req.user.id) return res.status(400).json({ error: "Cannot apply to your own job" });
-    const app = await prisma.application.create({
-      data: { jobId, coverNote: coverNote || "", applicantId: req.user.id }
-    });
-    res.status(201).json(app);
-  } catch (err) {
-    if (err.code === "P2002") return res.status(400).json({ error: "Already applied" });
-    console.error(err);
-    res.status(500).json({ error: "Failed to apply" });
-  }
+const { text, fail } = require("../lib/validation");
+router.use(requireAuth);
+router.post("/", async (req, res) => {
+  const jobId = text(req.body.jobId, "Job ID", 1, 100);
+  const coverNote = text(req.body.coverNote, "Cover note", 10, 2000);
+  if (req.user.role !== "STUDENT")
+    fail("Only student accounts can apply for gigs", 403);
+  const app = await prisma.$transaction(
+    async (tx) => {
+      const job = await tx.job.findUnique({ where: { id: jobId } });
+      if (!job) fail("Job not found", 404);
+      if (job.status !== "OPEN" || job.deadline <= new Date())
+        fail("Applications are closed", 409);
+      if (job.postedById === req.user.id) fail("Cannot apply to your own job");
+      return tx.application.create({
+        data: { jobId, coverNote, applicantId: req.user.id },
+      });
+    },
+    { isolationLevel: "Serializable" },
+  );
+  res.status(201).json(app);
 });
-
-router.get("/mine", requireAuth, async (req, res) => {
-  try {
-    const apps = await prisma.application.findMany({
-      where:   { applicantId: req.user.id },
-      include: { job: { include: { postedBy: { select: { id: true, name: true, role: true } } } } },
-      orderBy: { appliedAt: "desc" }
-    });
-    res.json(apps);
-  } catch (err) {
-    res.status(500).json({ error: "Failed to load applications" });
-  }
+router.get("/mine", async (req, res) =>
+  res.json(
+    await prisma.application.findMany({
+      where: { applicantId: req.user.id },
+      include: {
+        job: {
+          include: {
+            postedBy: { select: { id: true, name: true, role: true } },
+          },
+        },
+      },
+      orderBy: { appliedAt: "desc" },
+      take: 200,
+    }),
+  ),
+);
+router.get("/job/:jobId", async (req, res) => {
+  const job = await prisma.job.findUnique({ where: { id: req.params.jobId } });
+  if (!job) fail("Job not found", 404);
+  if (job.postedById !== req.user.id) fail("Not your job", 403);
+  res.json(
+    await prisma.application.findMany({
+      where: { jobId: job.id },
+      include: {
+        applicant: {
+          select: {
+            id: true,
+            name: true,
+            rating: true,
+            bio: true,
+            skills: true,
+          },
+        },
+      },
+      orderBy: { appliedAt: "desc" },
+      take: 200,
+    }),
+  );
 });
-
-router.get("/job/:jobId", requireAuth, async (req, res) => {
-  try {
-    const job = await prisma.job.findUnique({ where: { id: req.params.jobId } });
-    if (!job) return res.status(404).json({ error: "Job not found" });
-    if (job.postedById !== req.user.id) return res.status(403).json({ error: "Not your job" });
-    const apps = await prisma.application.findMany({
-      where:   { jobId: req.params.jobId },
-      include: { applicant: { select: { id: true, name: true, rating: true, bio: true } } },
-      orderBy: { appliedAt: "desc" }
+router.patch("/:id/:action", async (req, res) => {
+  if (!["accept", "reject"].includes(req.params.action))
+    fail("Unknown action", 404);
+  await prisma.$transaction(async (tx) => {
+    const app = await tx.application.findUnique({
+      where: { id: req.params.id },
+      include: { job: true },
     });
-    res.json(apps);
-  } catch (err) {
-    res.status(500).json({ error: "Failed to load applicants" });
-  }
-});
-
-router.patch("/:id/accept", requireAuth, async (req, res) => {
-  try {
-    const app = await prisma.application.findUnique({
-      where: { id: req.params.id }, include: { job: true }
+    if (!app) fail("Application not found", 404);
+    if (app.job.postedById !== req.user.id) fail("Not your job", 403);
+    if (app.status !== "PENDING" || app.job.status !== "OPEN")
+      fail("Application is no longer pending on an open job", 409);
+    if (req.params.action === "accept") {
+      // Conditional update serializes competing hires on the same job.
+      const claimed = await tx.job.updateMany({
+        where: { id: app.jobId, status: "OPEN", assignedToId: null },
+        data: { status: "IN_PROGRESS", assignedToId: app.applicantId },
+      });
+      if (claimed.count !== 1)
+        fail("Another applicant has already been hired", 409);
+      await tx.application.updateMany({
+        where: { jobId: app.jobId, id: { not: app.id }, status: "PENDING" },
+        data: { status: "REJECTED" },
+      });
+    }
+    await tx.application.update({
+      where: { id: app.id, status: "PENDING" },
+      data: {
+        status: req.params.action === "accept" ? "ACCEPTED" : "REJECTED",
+      },
     });
-    if (!app) return res.status(404).json({ error: "Application not found" });
-    if (app.job.postedById !== req.user.id) return res.status(403).json({ error: "Not your job" });
-    if (app.job.status !== "OPEN") return res.status(400).json({ error: "Job is no longer open" });
-    await prisma.$transaction([
-      prisma.application.update({ where: { id: req.params.id }, data: { status: "ACCEPTED" } }),
-      prisma.application.updateMany({ where: { jobId: app.jobId, id: { not: req.params.id } }, data: { status: "REJECTED" } }),
-      prisma.job.update({ where: { id: app.jobId }, data: { status: "IN_PROGRESS", assignedToId: app.applicantId } }),
-    ]);
-    res.json({ message: "Student hired successfully" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to accept" });
-  }
+  });
+  res.json({ message: "Application updated" });
 });
-
 module.exports = router;

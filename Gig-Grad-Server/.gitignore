@@ -13,3 +13,4 @@ node_modules/
 .claude/
 .windsurf/
 .agents/
+!.env.example

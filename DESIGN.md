@@ -1,106 +1,29 @@
-# GigGrad — Product & Data Design
+# GigGrad architecture
 
-A trusted, structured **campus micro-job marketplace**. Students earn; verified
-posters (faculty, staff, recognized bodies) get quick help. Core value =
-**verified campus + structured jobs + secure/escrow payments + trust ratings**.
+## Application
 
-## The cold-start reality
+The React application uses URL-based navigation with shareable job links and lazy-loaded page modules. `src/lib/api.js` is the shared HTTP client; it handles request timeouts, JSON errors, session expiry and authentication storage. Page components own their async state. Backend responses are the source of truth for identity and posting capability.
 
-Two-sided marketplaces die from lack of **supply of jobs**, not workers
-(1000 students / 5 jobs = looks dead). So:
+Public visitors can browse and inspect jobs. Authenticated students can apply and maintain their profile. Approved posting access is independent of role: faculty and staff post directly, while students and student-led organizations need approved posting access. Staff is represented by TEACHER with posterType=staff for separate presentation. Administrators are provisioned through an operator script, never public signup.
 
-- **Never gate the scarce side (posters) harder than necessary**, but keep it
-  **trusted** (posting is a privileged, verified action — protects against spam
-  and unpaid "jobs").
-- **Seed supply** at launch (admin posts real jobs; onboard a few
-  faculty/clubs) and **launch narrow** (one department/club first).
+## Backend
 
-## Identity vs. capability (the key architectural decision)
+`src/index.js` validates configuration and owns server lifecycle. `src/app.js` composes middleware and routes and can be loaded independently by tests. Authentication verifies the signed token and re-reads the user so current permissions take effect immediately. Route code validates inputs and only selects safe user fields.
 
-Who you *are* is separate from what you're *allowed to do*.
+`lib/validation.js` defines the permission and job-transition rules. Conditional updates and transactions protect hiring, cancellation, reviews and dispute decisions against stale writes. Hiring claims an open, unassigned job before accepting an application and rejecting the other pending applicants. Reviews require completed work and the exact other participant, then compute the rating with a database aggregate in the same transaction.
 
-```
-User {
-  role:         'student' | 'teacher' | 'staff' | 'admin'   // identity — a flexible lens
-  email:        string                                       // used for auto-verification
-  posterStatus: 'none' | 'pending' | 'approved' | 'rejected' // the posting GATE
-  posterType?:  'faculty' | 'staff' | 'council' | 'club' | 'org' | 'startup'
-  verifiedVia?: 'email_domain' | 'recognized_body' | 'admin'
-}
-// canPostJobs === (posterStatus === 'approved')   // derived; the single gate
-```
+Job browsing uses bounded pagination, stable tie ordering, category/search filters and future-deadline filtering. The dashboard uses one API request and a fixed number of database queries, independent of the number of jobs. Personalized responses are not cached by intermediaries.
 
-`role` sets the **default view/nav**. `posterStatus` is the **business lever**:
-graduate new segments into posting (scholars, club leads, orgs, seniors,
-startups) by flipping a status — **no schema migration**.
+## Persistence
 
-## Posting rights — one status, three grant paths
+PostgreSQL stores users, jobs, applications, reviews and disputes. Money is stored in fixed-point decimal columns. Compound indexes follow listing and account queries; unique constraints prevent duplicate applications and reviews. Database checks protect posting statuses, positive budgets and review ratings. Migrations include an initial baseline plus a separate additive upgrade for installations created before migration history.
 
-| Path | Who | How granted |
-|---|---|---|
-| **Auto — official email** | Faculty / staff | Email matches a staff domain/pattern → `approved` (`email_domain`) |
-| **Auto — recognized body** | Registered councils / clubs | On an admin-maintained allowlist → `approved` (`recognized_body`) |
-| **Request → admin approval** | New clubs, verified seniors, orgs, startups | Request → `pending` → admin approves/rejects (`admin`) |
+Payment integration remains future work. The Message table now supports private conversations between each job’s poster and hired worker, with cursor-based history, read state, stable message IDs for retry handling, and three-second client polling. Completed and cancelled projects archive their conversations. Files are not accepted until object storage and access controls are implemented; delivery links can be shared in chat.
 
-> **Email caveat:** if students & staff share one domain you can't auto-detect —
-> fall back to self-declared role + verification (faculty directory / staff-ID /
-> admin spot-check). Amrita uses `@am.students.amrita.edu` (student) vs
-> `@amrita.edu` (staff), so a subdomain check works. See `utils/verification.js`.
+## Verification and operations
 
-Anti-spam rule: **a self-selected "I'm a teacher" checkbox must NOT alone grant
-posting.** Capability is derived/assigned, never self-granted.
+Unit tests validate permission and transition boundaries. PostgreSQL integration tests exercise actual HTTP endpoints, concurrency, foreign keys and transactions. Browser smoke tests use Chrome DevTools Protocol with no extra automation dependency. CI runs migrations, lint, tests and a production build. Container deployments separate migrations from API startup and use readiness probes and a persistent database volume.
 
-## The job lifecycle (the product spine)
+The Supabase database is connected and upgraded. Remaining launch dependencies are documented in README.md: TLS and scheduled backups, verified campus identity and account recovery, plus a payment provider if integrated payments are desired. Project messaging is implemented in the API.
 
-```
-Poster creates ──▶ Students apply ──▶ Poster hires one ──▶ Worker submits ──▶ Poster approves
-   (open)            (pending)          (in-progress)      (pending-approval)   (completed →
-                                    others → rejected                            escrow released
-                                                                                 → mutual rating)
-```
-Statuses already exist in `data/constants.js` (`STATUS_CFG`, `APP_CFG`).
-
-## Information architecture (role-aware)
-
-| | Student (worker) | Poster (approved) | Admin |
-|---|---|---|---|
-| Nav | Home · Browse Jobs · Dashboard | Home · Post a Job · My Jobs · Dashboard | + Admin |
-| Dashboard | Applications · Earnings · Profile | Overview/Spending · Postings · Profile | — |
-| Workspace | Apply on job detail | **My Jobs → Applicant Review (hire)** | **Approval queue** |
-
-Students without posting rights can **Request access** (`/request-access`).
-
-## Firestore mapping (next: backend)
-
-- `users/{uid}`: role, posterStatus, posterType, verifiedVia, profile.
-- `jobs/{id}`: poster ref, category, amount, `status` state machine, deadline.
-- `applications/{id}`: jobId + applicantId refs (NOT the embedded job), status.
-- `recognizedBodies/{id}`: allowlist for auto-approval.
-- `posterRequests/{id}`: pending access requests for the admin queue.
-
-Security rules make the capability the authorization model:
-```
-allow create /jobs           if userDoc().posterStatus == 'approved';
-allow update posterStatus    if userDoc().role == 'admin';
-```
-
-## Demo accounts (mock, until Firebase)
-
-| Email | Experience |
-|---|---|
-| `yazeen@am.students.amrita.edu` | Student — browse/apply, cannot post |
-| `meera@amrita.edu` | Teacher — auto-approved poster (owns jobs) |
-| `council@am.students.amrita.edu` | Student **role** but recognized body → **can post** (shows the decoupling) |
-| `admin@amrita.edu` | Admin — approval queue |
-
-## Build phases
-
-- **A — capability model + role-aware shell** ✅ (this change): user gains
-  `posterStatus`; nav/routes gate on it; dashboards split; login resolves
-  identity from email.
-- **B — poster's half** ✅ (this change): My Jobs + Applicant Review
-  (accept/reject); Request-access + Admin approval queue.
-- **C — trust spine** (next, with Firebase): submit → approve → release escrow →
-  mutual ratings; real verification.
-- **v2 — liquidity**: student **service offers** (Fiverr-style) so the abundant
-  side fills the board; peer-to-peer postings (hackathon teammates, club gigs).
+Role content is centralized in `src/utils/experience.js`. Signed-in home pages, navigation, dashboards, profile wording and funding resources use this identity view; server authorization remains in `lib/validation.js` and route middleware. Admin sign-in uses `/api/auth/admin/login` and rechecks the account role before issuing a token. Admin overview counts and decision history come from database queries, not the operator's own job list.

@@ -1,0 +1,13 @@
+node_modules
+dist
+.git
+.env
+.env.*
+src/.env
+Gig-Grad-Server
+
+.demo-credentials.local.json
+DEMO_ACCOUNTS.local.md
+
+.admin-credentials.local.json
+ADMIN_LOGIN.local.md

@@ -1,3 +1,4 @@
+const paging = require("../lib/paging");
 const router = require("express").Router();
 const prisma = require("../lib/prisma");
 const requireAuth = require("../middleware/auth");
@@ -26,7 +27,7 @@ router.get("/", async (req, res) => {
     await prisma.user.findMany({
       where: { posterStatus: "pending", role: "STUDENT" },
       select: { ...userSelect, posterReason: true },
-      take: 100,
+      ...paging(req),
       orderBy: { createdAt: "asc" },
     }),
   );

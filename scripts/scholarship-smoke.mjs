@@ -58,10 +58,8 @@ try {
   await text("Your preliminary results");
   await text("Potential match");
   await screenshot("eligibility");
-  await evaluate(
-    `document.querySelector('[aria-label="Open Campus Companion"]').click()`,
-  );
-  await text("Campus Companion");
+  await evaluate(`document.querySelector('[aria-label="Open Milo"]').click()`);
+  await text("Milo");
   await fill(
     "#assistant-message",
     "How do scholarship eligibility checks work?",
@@ -82,7 +80,10 @@ try {
     password = "ScholarshipBrowser123!";
   const response = await fetch("http://127.0.0.1:5601/api/auth/signup", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Origin: "http://127.0.0.1:5617",
+    },
     body: JSON.stringify({
       name: "Scholarship browser test",
       email,

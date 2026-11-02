@@ -1,7 +1,7 @@
 const BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/$/, "");
 export const getToken = () => {
   try {
-    return localStorage.getItem("gg_token");
+    return localStorage.getItem("gg_token") === "cookie" ? "cookie" : null;
   } catch {
     return null;
   }
@@ -16,7 +16,7 @@ export const getUser = () => {
   }
 };
 export const saveAuth = (token, user) => {
-  localStorage.setItem("gg_token", token);
+  localStorage.setItem("gg_token", "cookie");
   localStorage.setItem("gg_user", JSON.stringify(user));
 };
 export const clearAuth = () => {
@@ -29,10 +29,10 @@ async function apiFetch(path, options = {}) {
   try {
     res = await fetch(`${BASE}${path}`, {
       ...options,
+      credentials: "include",
       signal: options.signal || AbortSignal.timeout(15000),
       headers: {
         "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...options.headers,
       },
     });
@@ -53,6 +53,16 @@ async function apiFetch(path, options = {}) {
   return data;
 }
 export const authAPI = {
+  status: () => apiFetch("/auth/status"),
+  logout: () => apiFetch("/auth/logout", { method: "POST" }),
+  resend: () => apiFetch("/auth/resend", { method: "POST" }),
+  forgot: (email) =>
+    apiFetch("/auth/forgot", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    }),
+  consume: (body) =>
+    apiFetch("/auth/consume", { method: "POST", body: JSON.stringify(body) }),
   adminLogin: (body) =>
     apiFetch("/auth/admin/login", {
       method: "POST",
@@ -66,9 +76,10 @@ export const authAPI = {
 };
 
 export const jobsAPI = {
+  recommended: (page = 1) => apiFetch(`/jobs/recommended?page=${page}`),
   getAll: (p = {}, signal) =>
     apiFetch("/jobs?" + new URLSearchParams(p), { signal }),
-  getMine: () => apiFetch("/jobs/my"),
+  getMine: (page) => apiFetch("/jobs/my" + (page ? `?page=${page}` : "")),
   getOne: (id) => apiFetch(`/jobs/${id}`),
   membership: (id) => apiFetch(`/jobs/${id}/membership`),
   create: (b) => apiFetch("/jobs", { method: "POST", body: JSON.stringify(b) }),
@@ -84,13 +95,15 @@ export const appsAPI = {
   apply: (b) =>
     apiFetch("/applications", { method: "POST", body: JSON.stringify(b) }),
   mine: () => apiFetch("/applications/mine"),
-  forJob: (jobId) => apiFetch(`/applications/job/${jobId}`),
+  forJob: (jobId, page) =>
+    apiFetch(`/applications/job/${jobId}` + (page ? `?page=${page}` : "")),
   accept: (id) => apiFetch(`/applications/${id}/accept`, { method: "PATCH" }),
   reject: (id) => apiFetch(`/applications/${id}/reject`, { method: "PATCH" }),
 };
 
 export const usersAPI = {
-  dashboard: () => apiFetch("/users/me/dashboard"),
+  dashboard: (page) =>
+    apiFetch("/users/me/dashboard" + (page ? `?page=${page}` : "")),
   myProfile: () => apiFetch("/users/me/profile"),
   getProfile: (id) => apiFetch(`/users/${id}`),
   updateMe: (b) =>
@@ -102,7 +115,7 @@ export const usersAPI = {
 export const disputesAPI = {
   raise: (b) =>
     apiFetch("/disputes", { method: "POST", body: JSON.stringify(b) }),
-  getAll: () => apiFetch("/disputes"),
+  getAll: (page) => apiFetch("/disputes" + (page ? `?page=${page}` : "")),
   resolve: (id, b) =>
     apiFetch(`/disputes/${id}/resolve`, {
       method: "PATCH",
@@ -112,7 +125,7 @@ export const disputesAPI = {
 export const accessAPI = {
   request: (body) =>
     apiFetch("/access", { method: "POST", body: JSON.stringify(body) }),
-  list: () => apiFetch("/access"),
+  list: (page) => apiFetch("/access" + (page ? `?page=${page}` : "")),
   decide: (id, status) =>
     apiFetch(`/access/${id}`, {
       method: "PATCH",
@@ -164,4 +177,32 @@ export const assistantAPI = {
 };
 export const adminAPI = {
   overview: () => apiFetch("/admin/overview"),
+};
+
+export const personalAPI = {
+  saved: () => apiFetch("/personal/saved"),
+  bookmark: (id, saved) =>
+    apiFetch(`/personal/saved/${id}`, { method: saved ? "PUT" : "DELETE" }),
+  importSaved: (ids) =>
+    apiFetch("/personal/saved/import", {
+      method: "POST",
+      body: JSON.stringify({ ids }),
+    }),
+  goal: (goal) =>
+    apiFetch("/personal/learning/goal", {
+      method: "PUT",
+      body: JSON.stringify({ goal }),
+    }),
+  learning: () => apiFetch("/personal/learning"),
+  progress: (path, milestones) =>
+    apiFetch(`/personal/learning/${path}`, {
+      method: "PUT",
+      body: JSON.stringify({ milestones }),
+    }),
+  notifications: (page = 1) => apiFetch(`/personal/notifications?page=${page}`),
+  read: (id) =>
+    apiFetch("/personal/notifications/read", {
+      method: "POST",
+      body: JSON.stringify({ id }),
+    }),
 };

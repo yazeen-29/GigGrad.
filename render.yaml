@@ -26,3 +26,5 @@ services:
       - key: DATABASE_URL
         sync: false
       # No paid AI provider credentials are provisioned for the free pilot.
+      - key: PUBLIC_SIGNUP_ENABLED
+        value: "0"

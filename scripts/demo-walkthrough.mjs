@@ -21,6 +21,14 @@ execFileSync("node", ["Gig-Grad-Server/scripts/seed-demo.js"], {
 const { password } = JSON.parse(
   await readFile(".demo-credentials.local.json", "utf8"),
 );
+const fixtureRequire = createRequire(
+  `${process.cwd()}/Gig-Grad-Server/package.json`,
+);
+const fixturePrisma = new (fixtureRequire("@prisma/client").PrismaClient)({
+  datasources: { db: { url: process.env.TEST_DATABASE_URL } },
+});
+await fixturePrisma.user.updateMany({ data: { emailVerifiedAt: new Date() } });
+await fixturePrisma.$disconnect();
 const browser = await browserSession();
 const { evaluate, visit, text, click, fill, screenshot, call, errors, pause } =
   browser;
@@ -29,7 +37,7 @@ async function login(key) {
   await visit("/");
   await text("GigGrad");
   await evaluate(
-    `localStorage.removeItem('gg_token');localStorage.removeItem('gg_user')`,
+    `fetch('/api/auth/logout',{method:'POST'}).catch(()=>{}).then(()=>{localStorage.removeItem('gg_token');localStorage.removeItem('gg_user')})`,
   );
   await visit(key === "admin" ? "/admin-login" : "/login");
   await text(key === "admin" ? "Administrator sign-in" : "Sign In");
@@ -107,17 +115,72 @@ try {
   passed.push(
     "student profile overview, editing, reload persistence and accurate completion prompt",
   );
+  await visit("/learn");
+  await text("Choose your next skill");
+  for (let attempt = 0; attempt < 60; attempt++) {
+    if (
+      await evaluate("!document.querySelector('.studio-step input').disabled")
+    )
+      break;
+    await pause(100);
+  }
+  await evaluate(
+    `[...document.querySelectorAll('.studio-path')].find(b=>b.textContent.includes('Design that gets noticed')).click()`,
+  );
+  for (let i = 0; i < 5; i++) {
+    for (let attempt = 0; attempt < 60; attempt++) {
+      if (
+        await evaluate(
+          `!document.querySelectorAll('.studio-step input')[${i}].disabled`,
+        )
+      )
+        break;
+      await pause(100);
+    }
+    await evaluate(
+      `document.querySelectorAll('.studio-step input')[${i}].click()`,
+    );
+    for (let attempt = 0; attempt < 40; attempt++) {
+      if (
+        await evaluate(
+          `!document.querySelectorAll('.studio-step input')[${i}].disabled&&document.querySelectorAll('.studio-step input')[${i}].checked`,
+        )
+      )
+        break;
+      await pause(100);
+    }
+  }
+  await text("5 of 5 milestones");
+  await visit("/learn");
+  await text("5 of 5 milestones");
+  await click("Review a portfolio project draft →");
+  await text("Review your practice project draft");
+  await evaluate(`document.querySelector('button.studio-primary').click()`);
+  await text("Your student showcase");
+  await fill(
+    ".showcase-edit-card input[type=url]",
+    "https://example.com/practice",
+  );
+  await click("Save changes");
+  await text("Profile updated.");
+  await visit("/profile");
+  await text("Design practice project");
+  passed.push(
+    "cloud learning progress survives reload and produces a reviewed portfolio draft",
+  );
   await visit("/jobs");
   await text("campus arts festival");
   await evaluate(
     `document.querySelector('button[aria-label^="Save job:"]').click()`,
   );
   await text("Saved (1)");
+  await visit("/jobs");
+  await text("Saved (1)");
   await visit("/job-detail/giggrad-demo-job-open-design");
   await text("Apply Now");
   await click("Apply Now");
   await fill(
-    "textarea",
+    'textarea[aria-label="Relevant experience"]',
     "I enjoy campus design and can deliver a clear, accessible poster.",
   );
   await click("Submit Application");
@@ -240,7 +303,7 @@ try {
   await text("Job Title");
   passed.push("approved club gains posting access on the same account");
   await evaluate(
-    `localStorage.removeItem('gg_token');localStorage.removeItem('gg_user')`,
+    `fetch('/api/auth/logout',{method:'POST'}).catch(()=>{}).then(()=>{localStorage.removeItem('gg_token');localStorage.removeItem('gg_user')})`,
   );
   await visit("/profile/giggrad-demo-user-student");
   await text("Aarav Menon");
@@ -273,6 +336,9 @@ try {
   console.log(
     `Role walkthrough passed: ${passed.length} scenarios across all six accounts. Screenshots and report: /tmp/giggrad-role-demo/`,
   );
+} catch (error) {
+  console.error("Role walkthrough failed:", error.message);
+  throw error;
 } finally {
   await browser.close();
   const require = createRequire(
@@ -285,7 +351,17 @@ try {
   try {
     if (!/^role_walkthrough_\d+$/.test(schema))
       throw new Error("Invalid temporary schema");
-    await cleanup.$executeRawUnsafe(`DROP SCHEMA "${schema}" CASCADE`);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await cleanup.$executeRawUnsafe(
+          `DROP SCHEMA IF EXISTS "${schema}" CASCADE`,
+        );
+        break;
+      } catch (error) {
+        if (attempt === 2) throw error;
+        await pause(1000);
+      }
+    }
   } finally {
     await cleanup.$disconnect();
   }

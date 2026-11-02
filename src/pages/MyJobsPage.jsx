@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import QueuePager from "../components/QueuePager";
+import { useCallback, useEffect, useState } from "react";
 import { getExperience } from "../utils/experience";
 
 import Card from "../components/ui/Card";
@@ -20,17 +21,18 @@ import {
 } from "lucide-react";
 
 export default function MyJobsPage({ setPage, setSelectedJob, currentUser }) {
+  const [listPage, setListPage] = useState(1);
   const experience = getExperience(currentUser);
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   // ── Load jobs posted by this user ────────────────────────────────────────
-  const loadMyJobs = async () => {
+  const loadMyJobs = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
-      const data = await jobsAPI.getMine();
+      const data = await jobsAPI.getMine(listPage);
       const list = Array.isArray(data)
         ? data
         : Array.isArray(data?.jobs)
@@ -44,12 +46,12 @@ export default function MyJobsPage({ setPage, setSelectedJob, currentUser }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [listPage]);
 
   useEffect(() => {
     const timer = setTimeout(() => loadMyJobs(), 0);
     return () => clearTimeout(timer);
-  }, []);
+  }, [loadMyJobs]);
 
   // ── Open job detail ──────────────────────────────────────────────────────
   const openJob = (job) => {
@@ -65,6 +67,11 @@ export default function MyJobsPage({ setPage, setSelectedJob, currentUser }) {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6">
+      <QueuePager
+        page={listPage}
+        setPage={setListPage}
+        hasNext={jobs.length >= 50}
+      />
       {/* Header */}
       <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
         <div>

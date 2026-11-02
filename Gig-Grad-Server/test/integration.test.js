@@ -7,6 +7,9 @@ test(
   { skip: !database, timeout: 60000 },
   async (t) => {
     process.env.DATABASE_URL = database;
+    process.env.NODE_ENV = "test";
+    process.env.PUBLIC_SIGNUP_ENABLED = "1";
+    process.env.CAMPUS_EMAIL_DOMAINS = "campus.edu";
     process.env.JWT_SECRET = "isolated-integration-test-secret-at-least-32";
     const prisma = require("../src/lib/prisma");
     const app = require("../src/app");
@@ -21,13 +24,17 @@ test(
         method,
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          Origin: "http://localhost:5173",
+          ...(token ? { Cookie: token } : {}),
         },
         ...(body ? { body: JSON.stringify(body) } : {}),
       });
+      const payload = await res.json();
+      if (res.headers.get("set-cookie"))
+        payload.token = res.headers.get("set-cookie").split(";")[0];
       return {
         status: res.status,
-        body: await res.json(),
+        body: payload,
         headers: res.headers,
       };
     }
@@ -43,7 +50,13 @@ test(
         },
       });
       assert.equal(res.status, 201, JSON.stringify(res.body));
+      assert.match(res.headers.get("set-cookie"), /HttpOnly/);
+      assert.match(res.headers.get("set-cookie"), /SameSite=Strict/);
       userIds.push(res.body.user.id);
+      await prisma.user.update({
+        where: { id: res.body.user.id },
+        data: { emailVerifiedAt: new Date() },
+      });
       assert.equal(res.body.user.password, undefined);
       return res.body;
     }
@@ -78,7 +91,10 @@ test(
           );
           const invalid = await fetch(`${base}/api/auth/login`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              Origin: "http://localhost:5173",
+            },
             body: "{bad",
           });
           assert.equal(invalid.status, 400);
@@ -958,6 +974,210 @@ test(
             },
           });
           assert.match(privateHistory.body.answer, /remove/i);
+        },
+      );
+      await t.test(
+        "cookie sessions, email gates, one-use reset links and synced personal data",
+        async () => {
+          const crypto = require("node:crypto");
+          const { hash } = require("../src/lib/session");
+          const learner = await signup("PilotLearner");
+          await prisma.user.update({
+            where: { id: learner.user.id },
+            data: { emailVerifiedAt: null },
+          });
+          assert.equal(
+            (
+              await api("/api/applications", {
+                method: "POST",
+                token: learner.token,
+                body: {
+                  jobId: gig.id,
+                  coverNote: "I can help with this project",
+                },
+              })
+            ).status,
+            403,
+          );
+          const raw = crypto.randomBytes(32).toString("hex");
+          await prisma.authToken.create({
+            data: {
+              id: hash(raw),
+              kind: "verify",
+              userId: learner.user.id,
+              expiresAt: new Date(Date.now() + 60000),
+            },
+          });
+          assert.equal(
+            (
+              await api("/api/auth/consume", {
+                method: "POST",
+                body: { kind: "verify", token: raw },
+              })
+            ).status,
+            200,
+          );
+          assert.equal(
+            (
+              await api("/api/auth/consume", {
+                method: "POST",
+                body: { kind: "verify", token: raw },
+              })
+            ).status,
+            400,
+          );
+          assert.equal(
+            (
+              await api("/api/personal/saved/" + gig.id, {
+                method: "PUT",
+                token: learner.token,
+              })
+            ).status,
+            200,
+          );
+          assert.equal(
+            (
+              await api("/api/personal/saved/" + gig.id, {
+                method: "PUT",
+                token: learner.token,
+              })
+            ).status,
+            200,
+          );
+          assert.equal(
+            (await api("/api/personal/saved", { token: learner.token })).body
+              .length,
+            1,
+          );
+          assert.equal(
+            (await api("/api/personal/saved", { token: student.token })).body
+              .length,
+            0,
+          );
+          assert.equal(
+            (
+              await api("/api/personal/learning/design", {
+                method: "PUT",
+                token: learner.token,
+                body: { milestones: [0, 1, 4] },
+              })
+            ).status,
+            200,
+          );
+          assert.equal(
+            (await api("/api/personal/learning", { token: learner.token }))
+              .body["design:4"],
+            true,
+          );
+          assert.equal(
+            (
+              await api("/api/personal/learning/design", {
+                method: "PUT",
+                token: learner.token,
+                body: { milestones: [99] },
+              })
+            ).status,
+            400,
+          );
+          const notes = await api("/api/personal/notifications", {
+            token: poster.token,
+          });
+          assert.ok(notes.body.total > 0);
+          const note = notes.body.items[0];
+          await api("/api/personal/notifications/read", {
+            method: "POST",
+            token: learner.token,
+            body: { id: note.id },
+          });
+          assert.equal(
+            (await prisma.notification.findUnique({ where: { id: note.id } }))
+              .isRead,
+            false,
+          );
+          const candidate = await create(poster.token, {
+            requiredSkills: ["Design", "CSS"],
+          });
+          assert.equal(candidate.status, 201);
+          await prisma.user.update({
+            where: { id: learner.user.id },
+            data: { skills: ["DESIGN"] },
+          });
+          const matches = await api("/api/jobs/recommended", {
+            token: learner.token,
+          });
+          assert.equal(matches.status, 200, JSON.stringify(matches.body));
+          assert.equal(matches.body.jobs[0].id, candidate.body.id);
+          assert.deepEqual(matches.body.jobs[0].matchedSkills, ["design"]);
+          assert.equal(
+            (
+              await api("/api/applications", {
+                method: "POST",
+                token: learner.token,
+                body: {
+                  jobId: candidate.body.id,
+                  coverNote: "I have built a campus poster",
+                  sampleUrl: "https://example.com/sample",
+                  deliveryPlan: "First draft tomorrow",
+                },
+              })
+            ).status,
+            201,
+          );
+          assert.ok(
+            !(
+              await api("/api/jobs/recommended", { token: learner.token })
+            ).body.jobs.some((j) => j.id === candidate.body.id),
+          );
+          const deniedOrigin = await fetch(base + "/api/auth/logout", {
+            method: "POST",
+            headers: {
+              Origin: "https://untrusted.example",
+              Cookie: learner.token,
+            },
+          });
+          assert.equal(deniedOrigin.status, 403);
+          const reset = crypto.randomBytes(32).toString("hex");
+          await prisma.authToken.create({
+            data: {
+              id: hash(reset),
+              kind: "reset",
+              userId: learner.user.id,
+              expiresAt: new Date(Date.now() + 60000),
+            },
+          });
+          assert.equal(
+            (
+              await api("/api/auth/consume", {
+                method: "POST",
+                body: {
+                  kind: "reset",
+                  token: reset,
+                  password: "UpdatedPassword123!",
+                },
+              })
+            ).status,
+            200,
+          );
+          assert.equal(
+            (await api("/api/auth/me", { token: learner.token })).status,
+            401,
+          );
+          const login = await api("/api/auth/login", {
+            method: "POST",
+            body: {
+              email: learner.user.email,
+              password: "UpdatedPassword123!",
+            },
+          });
+          assert.equal(login.status, 200);
+          await api("/api/auth/logout", {
+            method: "POST",
+            token: login.body.token,
+          });
+          assert.equal(
+            (await api("/api/auth/me", { token: login.body.token })).status,
+            401,
+          );
         },
       );
     } finally {

@@ -35,7 +35,27 @@ router.get("/overview", async (req, res) => {
       take: 8,
     }),
   ]);
+  const since = new Date(Date.now() - 7 * 86400000);
+  const [applications, hires, completed, unresolvedDisputes] =
+    await prisma.$transaction([
+      prisma.application.count({ where: { appliedAt: { gte: since } } }),
+      prisma.job.count({ where: { hiredAt: { gte: since } } }),
+      prisma.job.count({
+        where: { status: "COMPLETED", updatedAt: { gte: since } },
+      }),
+      prisma.dispute.count({ where: { status: "OPEN" } }),
+    ]);
+  const first =
+    await prisma.$queryRaw`SELECT AVG(EXTRACT(EPOCH FROM (a.first - j."createdAt")))/3600 AS hours FROM "Job" j JOIN (SELECT "jobId",MIN("appliedAt") AS first FROM "Application" GROUP BY "jobId") a ON a."jobId"=j.id WHERE a.first>=${since}`;
   res.json({
+    pilot: {
+      applications,
+      hires,
+      completed,
+      unresolvedDisputes,
+      averageHoursToFirstApplication:
+        first[0]?.hours == null ? null : Number(first[0].hours),
+    },
     stats: { pendingStudentRequests, openDisputes, activeProjects, totalUsers },
     recentResolved,
   });

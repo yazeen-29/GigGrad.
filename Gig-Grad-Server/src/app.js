@@ -14,6 +14,7 @@ const origins = (
   .map((s) => s.trim());
 app.use(
   cors({
+    credentials: true,
     origin: (origin, done) => done(null, !origin || origins.includes(origin)),
   }),
 );
@@ -25,6 +26,13 @@ app.use((req, res, next) => {
     "Referrer-Policy": "strict-origin-when-cross-origin",
     "Cache-Control": "no-store",
   });
+  next();
+});
+app.use((req, res, next) => {
+  if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return next();
+  const allowed = [...origins, process.env.APP_ORIGIN].filter(Boolean);
+  if (!req.headers.origin || !allowed.includes(req.headers.origin))
+    return res.status(403).json({ error: "Request origin is not allowed" });
   next();
 });
 app.use(express.json({ limit: "64kb" }));
@@ -59,6 +67,7 @@ app.use("/api/auth", (req, res, next) => {
   next();
 });
 for (const route of [
+  "personal",
   "auth",
   "jobs",
   "applications",

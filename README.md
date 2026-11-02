@@ -1,5 +1,7 @@
 # GigGrad
 
+See [PILOT_UPGRADE.md](PILOT_UPGRADE.md) for the current cookie-session, email verification, cloud progress, matching and pilot release behavior. Teachers and staff retain direct posting; campus email verification is separate. Public signup defaults to closed until email delivery is configured.
+
 A campus gig marketplace built with React, Vite, Express, Prisma and PostgreSQL.
 
 Students discover and save gigs, send applications, track assignments, submit work for approval and review completed work. Administrators review posting access and disputes. Approved posters publish briefs, review applicants and hire one worker per job.
@@ -94,10 +96,10 @@ After compatible security updates, `npm audit --omit=dev` reports no known vulne
 - The complete work-status lifecycle is implemented: open → hire → in progress → pending approval → completed. The owner can request revisions by returning submitted work to in progress. Disputes freeze active work until an administrator decides the outcome.
 - Payment is arranged directly between participants. GigGrad does not collect, hold, refund or release money. No payment gateway is connected.
 - Job conversations are implemented with persistent messages, cursor-based history, unread counts, read receipts and retry-safe sending. Only the hired worker and poster can access them; administrators have no implicit chat access. New messages refresh every three seconds while the thread is visible. Completed/cancelled projects remain readable and cannot receive new messages.
-- Signup checks college email syntax, **not ownership**. Connect email verification or campus SSO before opening signup to an untrusted audience. Password reset and Google sign-in controls were removed because no provider is configured.
-- Saved gigs are stored on the current device per account. A saved snapshot may expire; the detail page always refreshes from the server before actions.
-- Job discovery is paginated. Dashboard and applicant views currently return at most 200 records; add pagination before an individual account exceeds this limit. The posting request queue returns the oldest 100 pending requests.
-- Sessions use one-day JWTs in local storage. Restrictive production CSP is supplied. A future identity integration should add verified-email enforcement, reset delivery, server-side revocation and HttpOnly refresh cookies.
+- Signup requires a configured campus-domain allowlist and email sender. Verification and recovery flows are implemented; public signup remains closed until actual delivery is tested. Google/campus SSO is not integrated.
+- Signed-in saved gigs and learning progress sync through PostgreSQL. Guests retain browser-local data; signed-in users can explicitly import their own previous device data.
+- Job discovery is paginated. Workspace and administrator lists support 50-record pages. Legacy API callers without page parameters retain bounded array responses.
+- Sessions use one-day HttpOnly cookies with hashed server-side records, logout/reset revocation and Origin checks. Legacy JWTs are no longer accepted. Restrictive production CSP is supplied.
 
 See [DESIGN.md](DESIGN.md) for the current architecture and [Express security guidance](https://expressjs.com/advanced/best-practice-security/) and [Prisma transaction guidance](https://www.prisma.io/docs/orm/v6/prisma-client/queries/transactions) for the underlying operational patterns.
 

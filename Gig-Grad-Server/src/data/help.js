@@ -13,7 +13,7 @@ const articles = [
       "studio",
     ],
     content:
-      "Skill Studio at /learn offers beginner paths for Design, Coding, Data Entry, Document Formatting, Video Editing and Writing & Marketing. Each path has an official learning resource, three learning milestones, a practice brief and a portfolio checklist. Recommendations use your profile skills. Choose a goal to personalize your plan. Progress is self-reported, saved on this browser per account, and does not certify ability or guarantee hiring. Finish a sample, add relevant skills to Profile, then explore gigs and write a specific cover note.",
+      "Skill Studio at /learn offers beginner paths for Design, Coding, Data Entry, Document Formatting, Video Editing and Writing & Marketing. Each path has an official learning resource, three learning milestones, a practice brief and a portfolio checklist. Recommendations use your profile skills. Choose a goal to personalize your plan. Signed-in progress syncs across devices; guest progress stays on its browser. Progress is self-reported, and does not certify ability or guarantee hiring. Finish a sample, add relevant skills to Profile, then explore gigs and write a specific cover note.",
     action: { label: "Open Skill Studio", page: "learn" },
   },
   {
@@ -211,7 +211,7 @@ const articles = [
       "email",
     ],
     content:
-      "Use your registered email and password; email matching ignores case. New signup requires a college email. Email ownership verification, password-reset delivery and campus/Google SSO are not connected yet. An administrator cannot read your password. Demo accounts use the private local demo guide; the site has no authentication bypass.",
+      "Use your registered email and password; email matching ignores case. Public signup requires configured campus email domains and working email delivery. Email verification and password reset are available from Account help when delivery is configured. Verify email before applying, posting or messaging. Teachers and staff do not need administrator posting approval. Campus/Google SSO is not connected. Sessions use HttpOnly cookies; logout and password reset revoke sessions. An administrator cannot read your password. Demo accounts use the private local demo guide; the site has no authentication bypass.",
     action: { label: "Sign in", page: "login" },
   },
 ];

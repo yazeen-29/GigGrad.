@@ -37,7 +37,14 @@ async function ready(url) {
   throw new Error(`Not ready: ${url}`);
 }
 try {
-  start("node", ["Gig-Grad-Server/src/index.js"], { PORT: "5501" });
+  start("node", ["Gig-Grad-Server/src/index.js"], {
+    PORT: "5501",
+    NODE_ENV: "test",
+    PUBLIC_SIGNUP_ENABLED: "1",
+    CAMPUS_EMAIL_DOMAINS: "campus.edu",
+    CORS_ORIGINS: "http://127.0.0.1:5517",
+    APP_ORIGIN: "http://127.0.0.1:5517",
+  });
   start(
     "node",
     [
@@ -55,7 +62,10 @@ try {
   const signup = async (name) => {
     const res = await fetch("http://127.0.0.1:5501/api/auth/signup", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Origin: "http://127.0.0.1:5517",
+      },
       body: JSON.stringify({
         name,
         email: `${name}${suffix}@campus.edu`,
@@ -70,6 +80,10 @@ try {
   userId = student.user.id;
   const poster = await signup("BrowserPoster");
   posterId = poster.user.id;
+  await prisma.user.updateMany({
+    where: { id: { in: [userId, posterId] } },
+    data: { emailVerifiedAt: new Date() },
+  });
   await prisma.user.update({
     where: { id: posterId },
     data: { posterStatus: "approved" },
@@ -222,7 +236,7 @@ try {
   await shot("dashboard");
   async function loginAs(account) {
     await evaluate(
-      `localStorage.removeItem('gg_token');localStorage.removeItem('gg_user')`,
+      `fetch('/api/auth/logout',{method:'POST'}).catch(()=>{}).then(()=>{localStorage.removeItem('gg_token');localStorage.removeItem('gg_user')})`,
     );
     await visit("/login");
     await waitForText("Sign In");

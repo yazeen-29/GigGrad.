@@ -31,6 +31,7 @@ export default function PostJobPage({ setPage, currentUser }) {
   const experience = getExperience(currentUser);
   const [form, setForm] = useState({
     title: "",
+    requiredSkills: "",
     category: "",
     description: "",
     amount: "",
@@ -62,6 +63,14 @@ export default function PostJobPage({ setPage, currentUser }) {
         title: form.title,
         description: form.description,
         category: form.category,
+        requiredSkills: [
+          ...new Set(
+            (form.requiredSkills || "")
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean),
+          ),
+        ],
         amount: form.amount,
         deadline: form.deadline,
         urgent: form.urgent,
@@ -201,6 +210,16 @@ export default function PostJobPage({ setPage, currentUser }) {
                 ))}
               </select>
             </div>
+            <label className="block text-sm font-semibold">
+              Required skills (comma separated, up to 10)
+              <input
+                className="form-input mt-2"
+                maxLength={500}
+                value={form.requiredSkills || ""}
+                placeholder="Design, Canva, Typography"
+                onChange={(e) => update("requiredSkills", e.target.value)}
+              />
+            </label>
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-1.5">
                 Description <span className="text-red-500">*</span>

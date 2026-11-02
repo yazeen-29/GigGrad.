@@ -1,3 +1,4 @@
+import QueuePager from "../components/QueuePager";
 import { useEffect, useState } from "react";
 
 import Card from "../components/ui/Card";
@@ -13,6 +14,7 @@ import { appsAPI, jobsAPI } from "../lib/api";
 import { ChevronRight, Users, CheckCircle, XCircle } from "lucide-react";
 
 export default function ApplicantsPage({ jobId, setPage }) {
+  const [listPage, setListPage] = useState(1);
   const [job, setJob] = useState(null);
   const [applicants, setApplicants] = useState([]);
 
@@ -34,7 +36,7 @@ export default function ApplicantsPage({ jobId, setPage }) {
 
         const [jobData, applicantsData] = await Promise.all([
           jobsAPI.getOne(jobId),
-          appsAPI.forJob(jobId),
+          appsAPI.forJob(jobId, listPage),
         ]);
 
         setJob(jobData || null);
@@ -49,7 +51,7 @@ export default function ApplicantsPage({ jobId, setPage }) {
     }
 
     load();
-  }, [jobId]);
+  }, [jobId, listPage]);
 
   // ─────────────────────────────────────────────
   // Refresh applicants from backend
@@ -58,7 +60,7 @@ export default function ApplicantsPage({ jobId, setPage }) {
   const refreshApplicants = async () => {
     if (!jobId) return;
 
-    const data = await appsAPI.forJob(jobId);
+    const data = await appsAPI.forJob(jobId, listPage);
 
     setApplicants(Array.isArray(data) ? data : []);
   };
@@ -151,6 +153,11 @@ export default function ApplicantsPage({ jobId, setPage }) {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6">
+      <QueuePager
+        page={listPage}
+        setPage={setListPage}
+        hasNext={applicants.length >= 50}
+      />
       {/* Back button */}
       <button
         onClick={() => setPage("my-jobs")}

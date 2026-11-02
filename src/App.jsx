@@ -5,6 +5,7 @@ import Navbar from "./components/Navbar";
 import CampusCanvas from "./components/CampusCanvas";
 import { canPostJobs } from "./utils/verification";
 const CampusAssistant = lazy(() => import("./components/CampusAssistant"));
+const AccountPage = lazy(() => import("./pages/AccountPage"));
 const LearnPage = lazy(() => import("./pages/LearnPage"));
 const ScholarshipsPage = lazy(() => import("./pages/ScholarshipsPage"));
 import Loading from "./components/ui/Loading";
@@ -26,6 +27,7 @@ const ProfilePage = lazy(() => import("./pages/ProfilePage"));
 const publicPages = [
   ...(import.meta.env.DEV ? ["demo"] : []),
   "landing",
+  "account",
   "login",
   "admin-login",
   "jobs",
@@ -67,7 +69,13 @@ export default function App() {
     );
     window.scrollTo(0, 0);
   };
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await authAPI.logout();
+    } catch (error) {
+      window.alert(error.message);
+      return;
+    }
     clearAuth();
     setCurrentUser(null);
     route("/", { replace: true });
@@ -84,16 +92,15 @@ export default function App() {
     window.addEventListener("storage", syncSession);
     let active = true;
     const sessionToken = getToken();
-    if (sessionToken)
-      authAPI
-        .me()
-        .then((user) => {
-          if (active && getToken() === sessionToken) {
-            saveAuth(getToken(), user);
-            setCurrentUser(user);
-          }
-        })
-        .catch(() => {});
+    authAPI
+      .me()
+      .then((user) => {
+        if (active && getToken() === sessionToken) {
+          saveAuth(getToken(), user);
+          setCurrentUser(user);
+        }
+      })
+      .catch(() => {});
     return () => {
       active = false;
       window.removeEventListener("giggrad:logout", expire);
@@ -113,6 +120,9 @@ export default function App() {
       ) : (
         <p className="p-12 text-center">Page not found</p>
       );
+      break;
+    case "account":
+      content = <AccountPage />;
       break;
     case "landing":
       content = <LandingPage key={location.key} {...props} />;
@@ -249,7 +259,26 @@ export default function App() {
         id="main"
         className={["login", "admin-login"].includes(page) ? "" : "pt-[76px]"}
       >
-        <Suspense fallback={<Loading label="Loading…" />}>{content}</Suspense>
+        {currentUser &&
+          currentUser.role !== "ADMIN" &&
+          !currentUser.emailVerifiedAt && (
+            <div className="max-w-6xl mx-auto p-4 bg-amber-50 text-amber-900 text-sm flex flex-wrap gap-3 items-center">
+              Verify your campus email to apply, post or message. Teachers and
+              staff need no administrator posting approval.
+              <button
+                className="font-bold underline"
+                onClick={() => navigate("account")}
+              >
+                Manage email verification →
+              </button>
+            </div>
+          )}
+        <Suspense
+          key={currentUser?.id || "guest"}
+          fallback={<Loading label="Loading…" />}
+        >
+          {content}
+        </Suspense>
       </main>
       <Suspense fallback={null}>
         <CampusAssistant

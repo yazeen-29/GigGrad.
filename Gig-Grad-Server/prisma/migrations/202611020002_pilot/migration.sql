@@ -1,0 +1,21 @@
+ALTER TABLE "User" ADD COLUMN "learningGoal" TEXT NOT NULL DEFAULT '';
+ALTER TABLE "User" ADD COLUMN "emailVerifiedAt" TIMESTAMP(3);
+ALTER TABLE "Job" ADD COLUMN "hiredAt" TIMESTAMP(3);
+ALTER TABLE "Job" ADD COLUMN "requiredSkills" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
+CREATE TABLE "Session" ("id" TEXT PRIMARY KEY,"userId" TEXT NOT NULL REFERENCES "User"("id") ON DELETE CASCADE,"expiresAt" TIMESTAMP(3) NOT NULL);
+CREATE INDEX "Session_userId_idx" ON "Session"("userId");
+CREATE TABLE "AuthToken" ("id" TEXT PRIMARY KEY,"userId" TEXT NOT NULL REFERENCES "User"("id") ON DELETE CASCADE,"kind" TEXT NOT NULL,"expiresAt" TIMESTAMP(3) NOT NULL);
+CREATE INDEX "AuthToken_userId_kind_idx" ON "AuthToken"("userId","kind");
+CREATE TABLE "SavedGig" ("userId" TEXT NOT NULL REFERENCES "User"("id") ON DELETE CASCADE,"jobId" TEXT NOT NULL REFERENCES "Job"("id") ON DELETE CASCADE,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY("userId","jobId"));
+CREATE TABLE "LearningProgress" ("userId" TEXT NOT NULL REFERENCES "User"("id") ON DELETE CASCADE,"pathId" TEXT NOT NULL,"milestones" INTEGER[] NOT NULL DEFAULT ARRAY[]::INTEGER[],"updatedAt" TIMESTAMP(3) NOT NULL,PRIMARY KEY("userId","pathId"));
+CREATE TABLE "Notification" ("id" TEXT PRIMARY KEY,"userId" TEXT NOT NULL REFERENCES "User"("id") ON DELETE CASCADE,"title" TEXT NOT NULL,"jobId" TEXT NOT NULL,"isRead" BOOLEAN NOT NULL DEFAULT false,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE INDEX "Notification_userId_createdAt_idx" ON "Notification"("userId","createdAt");
+ALTER TABLE "Session" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "AuthToken" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "SavedGig" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "LearningProgress" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Notification" ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+ IF EXISTS (SELECT FROM pg_roles WHERE rolname='anon') THEN REVOKE ALL ON "Session","AuthToken","SavedGig","LearningProgress","Notification" FROM anon; END IF;
+ IF EXISTS (SELECT FROM pg_roles WHERE rolname='authenticated') THEN REVOKE ALL ON "Session","AuthToken","SavedGig","LearningProgress","Notification" FROM authenticated; END IF;
+END $$;

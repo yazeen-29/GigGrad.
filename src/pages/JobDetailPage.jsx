@@ -57,6 +57,8 @@ export default function JobDetailPage({
 
   /* Application */
   const [applying, setApplying] = useState(false);
+  const [sampleUrl, setSampleUrl] = useState("");
+  const [deliveryPlan, setDeliveryPlan] = useState("");
   const [coverNote, setCoverNote] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [applicationStatus, setApplicationStatus] = useState(null);
@@ -241,6 +243,8 @@ export default function JobDetailPage({
       await appsAPI.apply({
         jobId: job.id,
         coverNote: coverNote.trim(),
+        sampleUrl,
+        deliveryPlan,
       });
 
       setSubmitted(true);
@@ -689,7 +693,29 @@ export default function JobDetailPage({
                     Tell the poster why you are the right fit.
                   </p>
 
+                  <label className="block text-sm mb-3">
+                    Sample work link (optional)
+                    <input
+                      type="url"
+                      className="form-input mt-2"
+                      value={sampleUrl}
+                      maxLength={500}
+                      placeholder="https://…"
+                      onChange={(e) => setSampleUrl(e.target.value)}
+                    />
+                  </label>
+                  <label className="block text-sm mb-3">
+                    Delivery plan (optional)
+                    <textarea
+                      className="form-input mt-2"
+                      maxLength={500}
+                      value={deliveryPlan}
+                      placeholder="What will you deliver, and when?"
+                      onChange={(e) => setDeliveryPlan(e.target.value)}
+                    />
+                  </label>
                   <textarea
+                    aria-label="Relevant experience"
                     value={coverNote}
                     onChange={(e) => setCoverNote(e.target.value.slice(0, 400))}
                     placeholder="e.g. I have experience in APA formatting from my research methodology course. I can deliver within 2 days..."

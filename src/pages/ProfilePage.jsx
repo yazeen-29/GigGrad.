@@ -26,6 +26,15 @@ export default function ProfilePage({
   setPage,
 }) {
   const own = !!currentUser && (!profileId || profileId === currentUser.id);
+  const [practiceDraft, setPracticeDraft] = useState(() => {
+    try {
+      return JSON.parse(
+        sessionStorage.getItem(`gg_project_draft:${currentUser?.id}`) || "null",
+      );
+    } catch {
+      return null;
+    }
+  });
   const [data, setData] = useState(null);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
@@ -53,14 +62,17 @@ export default function ProfilePage({
       active = false;
     };
   }, [own, profileId, retry]);
-  function edit() {
+  function edit(withDraft = false) {
     setForm({
       headline: data.user.headline || "",
       portfolioUrl: data.user.portfolioUrl || "",
       resumeUrl: data.user.resumeUrl || "",
       githubUrl: data.user.githubUrl || "",
       linkedinUrl: data.user.linkedinUrl || "",
-      projects: Array.isArray(data.user.projects) ? data.user.projects : [],
+      projects: [
+        ...(Array.isArray(data.user.projects) ? data.user.projects : []),
+        ...(withDraft === true && practiceDraft ? [practiceDraft] : []),
+      ],
       achievements: Array.isArray(data.user.achievements)
         ? data.user.achievements
         : [],
@@ -107,6 +119,8 @@ export default function ProfilePage({
         user: { ...previous.user, ...user },
       }));
       setEditing(false);
+      sessionStorage.removeItem(`gg_project_draft:${currentUser?.id}`);
+      setPracticeDraft(null);
       setMessage("Profile updated. Looking good.");
     } catch (err) {
       setError(err.message);
@@ -174,7 +188,7 @@ export default function ProfilePage({
             </div>
             {own && !editing && (
               <button
-                onClick={edit}
+                onClick={() => edit()}
                 className="inline-flex items-center gap-2 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold bg-white hover:bg-slate-50"
               >
                 <Pencil size={16} />
@@ -198,6 +212,11 @@ export default function ProfilePage({
               </span>
             )}
           </div>
+          {user.emailVerifiedAt && (
+            <span className="text-xs text-emerald-700 mt-3 inline-block">
+              Email verified
+            </span>
+          )}
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight mt-4">
             {user.name}
           </h1>
@@ -237,6 +256,16 @@ export default function ProfilePage({
           </div>
         </div>
       </section>
+      {own && practiceDraft && !editing && (
+        <button
+          className="studio-primary mt-5"
+          disabled={user.projects?.length >= 8}
+          onClick={() => edit(true)}
+        >
+          Review your practice project draft (add a project link before
+          publishing)
+        </button>
+      )}
       {message && (
         <p
           role="status"
@@ -362,7 +391,7 @@ export default function ProfilePage({
               </div>
             </section>
             {user.role === "STUDENT" && (
-              <StudentShowcase user={user} own={own} onEdit={edit} />
+              <StudentShowcase user={user} own={own} onEdit={() => edit()} />
             )}
             <section className="profile-section">
               <h2>{experience.portfolioTitle}</h2>

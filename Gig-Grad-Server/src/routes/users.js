@@ -1,3 +1,4 @@
+const paging = require("../lib/paging");
 const router = require("express").Router();
 const prisma = require("../lib/prisma");
 const { showcase } = require("../lib/profile");
@@ -9,7 +10,7 @@ router.get("/me/dashboard", requireAuth, async (req, res) => {
       where: { postedById: req.user.id },
       include: { _count: { select: { applications: true } } },
       orderBy: { createdAt: "desc" },
-      take: 200,
+      ...paging(req),
     }),
     prisma.application.findMany({
       where: { applicantId: req.user.id },
@@ -21,7 +22,7 @@ router.get("/me/dashboard", requireAuth, async (req, res) => {
         },
       },
       orderBy: { appliedAt: "desc" },
-      take: 200,
+      ...paging(req),
     }),
   ]);
   res.json({ jobs, applications });
@@ -31,6 +32,7 @@ async function profile(id, own = false) {
     id: true,
     name: true,
     role: true,
+    emailVerifiedAt: true,
     college: true,
     rating: true,
     bio: true,

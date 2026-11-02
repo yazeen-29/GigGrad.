@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowUpRight,
   ArrowRight,
@@ -7,11 +7,13 @@ import {
   Sparkles,
   Target,
 } from "lucide-react";
+import { personalAPI } from "../lib/api";
 import paths from "../../Gig-Grad-Server/src/data/learning.json";
 
 export default function LearnPage({ currentUser, setPage }) {
   const storageKey = `gg_learning_v1:${currentUser?.id || "guest"}`;
   const [plan, setPlan] = useState(() => {
+    if (currentUser) return {};
     try {
       const value = JSON.parse(localStorage.getItem(storageKey));
       return value && typeof value === "object" && !Array.isArray(value)
@@ -21,6 +23,8 @@ export default function LearnPage({ currentUser, setPage }) {
       return {};
     }
   });
+  const [syncReady, setSyncReady] = useState(!currentUser);
+  const [saving, setSaving] = useState(false);
   const [storageError, setStorageError] = useState("");
   const [filter, setFilter] = useState("");
   const skills = (currentUser?.skills || []).map((s) => s.toLowerCase());
@@ -41,14 +45,85 @@ export default function LearnPage({ currentUser, setPage }) {
   const complete = steps.filter(
     (_, i) => plan[`${path.id}:${i}`] === true,
   ).length;
-  function save(next) {
-    setPlan(next);
+  useEffect(() => {
+    if (!currentUser) return;
+    let active = true;
+    personalAPI
+      .learning()
+      .then((remote) => {
+        if (active) {
+          setPlan(remote);
+          if (paths.some((p) => p.id === remote.goal)) setSelected(remote.goal);
+          setSyncReady(true);
+        }
+      })
+      .catch((e) => {
+        if (active) setStorageError(e.message);
+      });
+    return () => {
+      active = false;
+    };
+  }, [currentUser]);
+  async function save(next) {
+    if (!syncReady || saving) return;
+    setSaving(true);
     try {
-      localStorage.setItem(storageKey, JSON.stringify(next));
+      if (currentUser) {
+        if (next.goal !== plan.goal) await personalAPI.goal(next.goal);
+        for (const p of paths) {
+          if (
+            [0, 1, 2, 3, 4].some(
+              (i) => next[`${p.id}:${i}`] !== plan[`${p.id}:${i}`],
+            )
+          )
+            await personalAPI.progress(
+              p.id,
+              [0, 1, 2, 3, 4].filter((i) => next[`${p.id}:${i}`] === true),
+            );
+        }
+      } else localStorage.setItem(storageKey, JSON.stringify(next));
+      setPlan(next);
       setStorageError("");
+    } catch (e) {
+      setStorageError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+  async function importProgress() {
+    try {
+      const local = JSON.parse(localStorage.getItem(storageKey) || "{}");
+      if (!local || typeof local !== "object" || Array.isArray(local))
+        throw new Error("No valid progress to import");
+      for (const p of paths)
+        await personalAPI.progress(
+          p.id,
+          [0, 1, 2, 3, 4].filter(
+            (i) =>
+              plan[`${p.id}:${i}`] === true || local[`${p.id}:${i}`] === true,
+          ),
+        );
+      setPlan(await personalAPI.learning());
+      localStorage.removeItem(storageKey);
+      setStorageError("");
+    } catch (e) {
+      setStorageError(e.message);
+    }
+  }
+  function draftProject() {
+    try {
+      sessionStorage.setItem(
+        `gg_project_draft:${currentUser.id}`,
+        JSON.stringify({
+          title: `${path.category} practice project`,
+          description: path.brief,
+          url: "",
+        }),
+      );
+      setPage("profile");
     } catch {
       setStorageError(
-        "Progress could not be saved on this browser. You can keep learning this session.",
+        "Your browser could not prepare a draft. Add the sample from Edit profile instead.",
       );
     }
   }
@@ -61,6 +136,11 @@ export default function LearnPage({ currentUser, setPage }) {
   }
   return (
     <div className="skill-studio max-w-7xl mx-auto px-5 py-10 md:py-16">
+      {!syncReady && (
+        <p role="status" className="text-sm text-slate-500 mb-4">
+          Loading your saved learning progress…
+        </p>
+      )}
       <div className="studio-hero">
         <div>
           <span className="studio-eyebrow">
@@ -134,6 +214,7 @@ export default function LearnPage({ currentUser, setPage }) {
             .map((p, i) => (
               <button
                 key={p.id}
+                disabled={!syncReady || saving}
                 aria-pressed={selected === p.id}
                 onClick={() => {
                   setSelected(p.id);
@@ -198,6 +279,7 @@ export default function LearnPage({ currentUser, setPage }) {
             {steps.map((step, i) => (
               <label className="studio-step" key={`${path.id}:${i}`}>
                 <input
+                  disabled={!syncReady || saving}
                   type="checkbox"
                   checked={plan[`${path.id}:${i}`] === true}
                   onChange={(e) =>
@@ -260,10 +342,24 @@ export default function LearnPage({ currentUser, setPage }) {
           Update my profile <ArrowRight size={16} />
         </button>
       </div>
+      {currentUser && (
+        <button
+          className="text-sm text-blue-700 mt-5"
+          disabled={!syncReady || saving}
+          onClick={importProgress}
+        >
+          Import my progress from this browser
+        </button>
+      )}
+      {complete === 5 && currentUser?.role === "STUDENT" && (
+        <button className="studio-primary mt-5" onClick={draftProject}>
+          Review a portfolio project draft →
+        </button>
+      )}
       <p className="text-xs text-slate-500 mt-6">
-        Progress stays on this device, separately for each account. Milestones
-        are self-reported; completing a path does not certify skills or
-        guarantee hiring.
+        Signed-in progress syncs across devices; guest progress stays on this
+        browser. Milestones are self-reported; completing a path does not
+        certify skills or guarantee hiring.
       </p>
       {storageError && (
         <p role="alert" className="text-sm text-amber-700 mt-3">

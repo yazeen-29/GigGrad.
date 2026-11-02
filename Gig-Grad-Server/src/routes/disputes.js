@@ -1,3 +1,4 @@
+const paging = require("../lib/paging");
 const router = require("express").Router();
 const prisma = require("../lib/prisma");
 const requireAuth = require("../middleware/auth");
@@ -17,6 +18,15 @@ router.post("/", requireAuth, async (req, res) => {
       where: { id: jobId, status: job.status },
       data: { status: "DISPUTED" },
     }),
+    prisma.notification.createMany({
+      data: [job.postedById, job.assignedToId]
+        .filter((id) => id && id !== req.user.id)
+        .map((userId) => ({
+          userId,
+          jobId: job.id,
+          title: "Project dispute opened",
+        })),
+    }),
   ]);
   res.status(201).json(dispute);
 });
@@ -30,7 +40,7 @@ router.get("/", requireAuth, async (req, res) => {
         raisedBy: { select: { id: true, name: true, role: true } },
       },
       orderBy: { createdAt: "desc" },
-      take: 200,
+      ...paging(req),
     }),
   );
 });
@@ -41,6 +51,7 @@ router.patch("/:id/resolve", requireAuth, async (req, res) => {
   const adminNote = text(req.body.adminNote, "Decision note", 10, 2000);
   const dispute = await prisma.dispute.findUnique({
     where: { id: req.params.id },
+    include: { job: true },
   });
   if (!dispute) fail("Dispute not found", 404);
   if (dispute.status !== "OPEN") fail("Dispute already resolved", 409);
@@ -58,6 +69,15 @@ router.patch("/:id/resolve", requireAuth, async (req, res) => {
     prisma.job.update({
       where: { id: dispute.jobId, status: "DISPUTED" },
       data: { status },
+    }),
+    prisma.notification.createMany({
+      data: [dispute.job.postedById, dispute.job.assignedToId]
+        .filter(Boolean)
+        .map((userId) => ({
+          userId,
+          jobId: dispute.jobId,
+          title: `Dispute resolved: ${status.toLowerCase()}`,
+        })),
     }),
   ]);
   res.json({ message: `Resolved — job marked ${status}` });

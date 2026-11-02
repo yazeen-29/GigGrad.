@@ -1,3 +1,4 @@
+import QueuePager from "../components/QueuePager";
 import { useEffect, useState } from "react";
 import { usersAPI } from "../lib/api";
 import { getExperience } from "../utils/experience";
@@ -25,6 +26,7 @@ export default function DashboardPage(props) {
   );
 }
 function WorkDashboard({ currentUser: user, setPage }) {
+  const [listPage, setListPage] = useState(1);
   const experience = getExperience(user);
   const [data, setData] = useState({ jobs: [], applications: [] }),
     [tab, setTab] = useState(experience.canPost ? "posted" : "applied"),
@@ -37,7 +39,7 @@ function WorkDashboard({ currentUser: user, setPage }) {
       setLoading(true);
       setError("");
       try {
-        const result = await usersAPI.dashboard();
+        const result = await usersAPI.dashboard(listPage);
         if (active) setData(result);
       } catch (err) {
         if (active) setError(err.message);
@@ -49,7 +51,7 @@ function WorkDashboard({ currentUser: user, setPage }) {
     return () => {
       active = false;
     };
-  }, [version]);
+  }, [version, listPage]);
   const workerView = tab === "applied",
     completed = data.applications.filter(
       (app) => app.status === "ACCEPTED" && app.job.status === "COMPLETED",
@@ -118,6 +120,11 @@ function WorkDashboard({ currentUser: user, setPage }) {
   const visibleJobs = tab === "review" ? awaiting : data.jobs;
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10">
+      <QueuePager
+        page={listPage}
+        setPage={setListPage}
+        hasNext={data.jobs.length >= 50 || data.applications.length >= 50}
+      />
       <div className="flex flex-wrap justify-between gap-5 mb-8">
         <div>
           <span className="eyebrow">

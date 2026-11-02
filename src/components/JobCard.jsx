@@ -59,6 +59,11 @@ export default function JobCard({ job, onClick, applied = false }) {
         {job.title}
       </h3>
 
+      {job.matchedSkills?.length > 0 && (
+        <p className="text-xs text-emerald-700 mt-2">
+          Shared skills: {job.matchedSkills.join(", ")}
+        </p>
+      )}
       {/* ── Description ────────────────────────────────────────── */}
       <p className="text-slate-500 text-sm leading-relaxed line-clamp-2 mb-4">
         {job.description}

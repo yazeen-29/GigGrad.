@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { getExperience } from "../utils/experience";
-import { jobsAPI, getUser } from "../lib/api";
+import { jobsAPI, getUser, personalAPI } from "../lib/api";
 import JobCard from "../components/JobCard";
 import Loading from "../components/ui/Loading";
 import EmptyState from "../components/ui/EmptyState";
@@ -25,9 +25,12 @@ export default function JobsPage({ setPage, currentUser }) {
   const [page, setPageNumber] = useState(1);
   const [meta, setMeta] = useState({ total: 0, pages: 0 });
   const [retry, setRetry] = useState(0);
+  const [matching, setMatching] = useState(false);
+  const [syncReady, setSyncReady] = useState(!currentUser);
   const [savedOnly, setSavedOnly] = useState(false);
   const storageKey = `gg_saved_${getUser()?.id || "guest"}`;
   const [saved, setSaved] = useState(() => {
+    if (currentUser) return [];
     try {
       const value = JSON.parse(localStorage.getItem(storageKey) || "[]");
       return Array.isArray(value) ? value : [];
@@ -36,19 +39,42 @@ export default function JobsPage({ setPage, currentUser }) {
     }
   });
   useEffect(() => {
+    if (!currentUser) return;
+    let active = true;
+    personalAPI
+      .saved()
+      .then((rows) => {
+        if (active) {
+          setSaved(rows.map((r) => r.job));
+          setSyncReady(true);
+        }
+      })
+      .catch((e) => {
+        if (active) setError(e.message);
+      });
+    return () => {
+      active = false;
+    };
+  }, [currentUser]);
+  useEffect(() => {
     if (savedOnly) return;
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       setLoading(true);
       setError("");
       try {
-        const result = await jobsAPI.getAll(
-          { search: search.trim(), category, sort, page },
-          controller.signal,
-        );
+        const result = matching
+          ? await jobsAPI.recommended(page)
+          : await jobsAPI.getAll(
+              { search: search.trim(), category, sort, page },
+              controller.signal,
+            );
         if (!controller.signal.aborted) {
           setJobs(result.jobs);
-          setMeta({ total: result.total, pages: result.pages });
+          setMeta({
+            total: result.total ?? result.jobs.length,
+            pages: result.pages ?? (result.hasMore ? page + 1 : page),
+          });
         }
       } catch (err) {
         if (!controller.signal.aborted) setError(err.message);
@@ -60,16 +86,33 @@ export default function JobsPage({ setPage, currentUser }) {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [search, category, sort, page, retry, savedOnly]);
-  function bookmark(job) {
-    const next = saved.some((item) => item.id === job.id)
+  }, [search, category, sort, page, retry, savedOnly, matching]);
+  async function bookmark(job) {
+    if (!syncReady) return;
+    const exists = saved.some((item) => item.id === job.id);
+    const next = exists
       ? saved.filter((item) => item.id !== job.id)
       : [...saved, job];
-    setSaved(next);
     try {
-      localStorage.setItem(storageKey, JSON.stringify(next));
-    } catch {
-      setError("Your browser could not save this bookmark.");
+      if (currentUser) await personalAPI.bookmark(job.id, !exists);
+      else localStorage.setItem(storageKey, JSON.stringify(next));
+      setSaved(next);
+      setError("");
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+  async function importSaved() {
+    try {
+      const local = JSON.parse(localStorage.getItem(storageKey) || "[]");
+      await personalAPI.importSaved(
+        Array.isArray(local) ? local.map((j) => j.id) : [],
+      );
+      setSaved((await personalAPI.saved()).map((r) => r.job));
+      localStorage.removeItem(storageKey);
+      setError("");
+    } catch (e) {
+      setError(e.message);
     }
   }
   const visible = savedOnly
@@ -87,6 +130,39 @@ export default function JobsPage({ setPage, currentUser }) {
   }
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10">
+      {currentUser?.role === "STUDENT" && (
+        <div className="flex flex-wrap gap-3 mb-4">
+          <button
+            className="studio-secondary"
+            aria-pressed={matching}
+            onClick={() => {
+              setMatching(!matching);
+              setSearch("");
+              setCategory("All");
+              setSort("newest");
+              setSavedOnly(false);
+              setPageNumber(1);
+            }}
+          >
+            {" "}
+            {matching ? "Show all gigs" : "Matches your skills"}
+          </button>
+          <button
+            className="text-sm text-blue-700"
+            disabled={!syncReady}
+            onClick={importSaved}
+          >
+            Import my saved gigs from this browser
+          </button>
+        </div>
+      )}
+      {matching && (
+        <p className="text-sm text-slate-500 mb-4">
+          Ordered by shared skills, then newest. Your postings and existing
+          applications are excluded. Matches are suggestions, not hiring
+          guarantees.
+        </p>
+      )}
       <div className="market-header rounded-3xl p-7 sm:p-10 mb-8 relative overflow-hidden">
         <div className="relative z-10 max-w-xl">
           <span className="eyebrow text-blue-200">
@@ -129,7 +205,9 @@ export default function JobsPage({ setPage, currentUser }) {
           <p className="text-sm text-slate-500 mt-1">
             {savedOnly
               ? `${saved.length} saved on this device`
-              : `${meta.total} open gigs · a little work, a lot of potential`}
+              : matching
+                ? `${jobs.length} suggestions on this page · sorted by shared skills`
+                : `${meta.total} open gigs · a little work, a lot of potential`}
           </p>
         </div>
         <button
@@ -145,6 +223,7 @@ export default function JobsPage({ setPage, currentUser }) {
         <div className="relative flex-1">
           <Search size={18} className="absolute left-3 top-3 text-slate-400" />
           <input
+            disabled={matching && !savedOnly}
             aria-label="Search jobs"
             value={search}
             onChange={(e) => filter(setSearch, e.target.value)}
@@ -155,6 +234,7 @@ export default function JobsPage({ setPage, currentUser }) {
         <div className="flex items-center gap-2 border-l border-slate-100 pl-3">
           <SlidersHorizontal size={16} className="text-slate-400" />
           <select
+            disabled={matching && !savedOnly}
             aria-label="Sort opportunities"
             value={sort}
             onChange={(e) => filter(setSort, e.target.value)}
@@ -171,6 +251,7 @@ export default function JobsPage({ setPage, currentUser }) {
         {CATEGORIES.map((item) => (
           <button
             key={item}
+            disabled={matching && !savedOnly}
             aria-pressed={category === item}
             onClick={() => filter(setCategory, item)}
             className={`px-4 py-2 rounded-full text-xs font-semibold border transition-colors ${category === item ? "bg-slate-900 border-slate-900 text-white" : "bg-white border-slate-200 text-slate-600 hover:border-blue-400"}`}

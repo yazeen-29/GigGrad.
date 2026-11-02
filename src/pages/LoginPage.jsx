@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -84,6 +84,13 @@ export default function LoginPage({
   initialEmail = "",
   adminOnly = false,
 }) {
+  const [signupReady, setSignupReady] = useState(false);
+  useEffect(() => {
+    authAPI
+      .status()
+      .then((s) => setSignupReady(s.signupAvailable))
+      .catch(() => {});
+  }, []);
   const navigate = useNavigate();
   const [tab, setTab] = useState("login");
 
@@ -114,11 +121,6 @@ export default function LoginPage({
       e.email = "Email is required";
     } else if (!normalizedEmail.includes("@")) {
       e.email = "Enter a valid email address";
-    } else if (
-      tab === "signup" &&
-      !/^[^\s@]+@[^\s@]+\.(edu|ac\.in)$/.test(normalizedEmail)
-    ) {
-      e.email = "Use your college email (e.g. name@college.ac.in)";
     }
 
     if (!password) {
@@ -327,6 +329,20 @@ export default function LoginPage({
               ))}
             </div>
           )}
+          {tab === "signup" && !signupReady && (
+            <p className="mb-4 text-sm bg-amber-50 p-3 rounded-xl text-amber-800">
+              Campus registration is not open yet. Email delivery and campus
+              domains are being configured. Existing accounts can sign in.
+            </p>
+          )}
+          {tab === "login" && (
+            <button
+              className="text-sm text-blue-700 mb-4"
+              onClick={() => navigate("/account")}
+            >
+              Forgot password or need email verification?
+            </button>
+          )}
           {/* Form */}
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             {/* Name */}
@@ -436,7 +452,7 @@ export default function LoginPage({
             {/* Submit */}
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || (tab === "signup" && !signupReady)}
               className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold text-white transition-all duration-150 border-0 mt-1 ${
                 loading
                   ? "bg-blue-400 cursor-not-allowed"

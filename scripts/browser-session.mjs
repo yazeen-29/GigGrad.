@@ -10,6 +10,11 @@ export async function browserSession() {
   const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const env = {
     ...process.env,
+    NODE_ENV: "test",
+    PUBLIC_SIGNUP_ENABLED: "1",
+    CAMPUS_EMAIL_DOMAINS: "campus.edu",
+    APP_ORIGIN: "http://127.0.0.1:5617",
+    CORS_ORIGINS: "http://127.0.0.1:5617",
     DATABASE_URL: process.env.TEST_DATABASE_URL,
     JWT_SECRET: "role-walkthrough-isolated-secret-at-least-32-characters",
   };

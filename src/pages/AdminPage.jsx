@@ -1,3 +1,4 @@
+import QueuePager from "../components/QueuePager";
 import { useEffect, useState } from "react";
 import { accessAPI, adminAPI, disputesAPI } from "../lib/api";
 import {
@@ -10,6 +11,7 @@ import {
 } from "lucide-react";
 import Loading from "../components/ui/Loading";
 export default function AdminPage({ currentUser, setPage }) {
+  const [listPage, setListPage] = useState(1);
   const [overview, setOverview] = useState(null),
     [requests, setRequests] = useState([]),
     [disputes, setDisputes] = useState([]),
@@ -27,8 +29,8 @@ export default function AdminPage({ currentUser, setPage }) {
       try {
         const [summary, access, conflicts] = await Promise.all([
           adminAPI.overview(),
-          accessAPI.list(),
-          disputesAPI.getAll(),
+          accessAPI.list(listPage),
+          disputesAPI.getAll(listPage),
         ]);
         if (active) {
           setOverview(summary);
@@ -45,7 +47,7 @@ export default function AdminPage({ currentUser, setPage }) {
     return () => {
       active = false;
     };
-  }, [version]);
+  }, [version, listPage]);
   async function decide(id, status) {
     setBusy(id);
     setError("");
@@ -85,6 +87,28 @@ export default function AdminPage({ currentUser, setPage }) {
   }
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10">
+      {overview?.pilot && (
+        <section className="profile-section mb-5">
+          <h2>Pilot activity · last 7 days</h2>
+          <p className="text-sm mt-3">
+            {overview.pilot.applications} applications · {overview.pilot.hires}{" "}
+            hires · {overview.pilot.completed} completed gigs ·{" "}
+            {overview.pilot.unresolvedDisputes} unresolved disputes
+          </p>
+          <p className="text-xs text-slate-500 mt-2">
+            Average time to first application:{" "}
+            {overview.pilot.averageHoursToFirstApplication == null
+              ? "No applications yet"
+              : `${overview.pilot.averageHoursToFirstApplication.toFixed(1)} hours`}
+            . Aggregate operational data only.
+          </p>
+        </section>
+      )}
+      <QueuePager
+        page={listPage}
+        setPage={setListPage}
+        hasNext={requests.length >= 50 || disputes.length >= 50}
+      />
       <div className="flex flex-wrap justify-between gap-5 mb-8">
         <div>
           <span className="eyebrow">

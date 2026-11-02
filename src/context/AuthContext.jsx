@@ -10,7 +10,8 @@ export function AuthProvider({ children }) {
     setUser(result.user);
     return result.user;
   }
-  function logout() {
+  async function logout() {
+    await authAPI.logout();
     clearAuth();
     setUser(null);
   }

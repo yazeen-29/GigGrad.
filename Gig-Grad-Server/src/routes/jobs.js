@@ -1,3 +1,5 @@
+const notify = require("../lib/notifications");
+const paging = require("../lib/paging");
 const router = require("express").Router();
 const prisma = require("../lib/prisma");
 const requireAuth = require("../middleware/auth");
@@ -59,10 +61,28 @@ router.get("/my", requireAuth, async (req, res) =>
       where: { postedById: req.user.id },
       include,
       orderBy: { createdAt: "desc" },
-      take: 200,
+      ...paging(req),
     }),
   ),
 );
+router.get("/recommended", requireAuth, async (req, res) => {
+  const page = Math.max(1, parseInt(req.query.page) || 1),
+    limit = 24;
+  const skills = req.user.skills.map((s) => s.trim().toLowerCase());
+  const jobs =
+    await prisma.$queryRaw`SELECT j.*, COALESCE((SELECT count(*)::float / NULLIF(cardinality(j."requiredSkills"),0) FROM unnest(j."requiredSkills") skill WHERE lower(skill)=ANY(${skills}::text[])),0) AS "matchScore" FROM "Job" j WHERE j.status='OPEN' AND j.deadline>NOW() AND j."postedById"<>${req.user.id} AND NOT EXISTS(SELECT 1 FROM "Application" a WHERE a."jobId"=j.id AND a."applicantId"=${req.user.id}) ORDER BY "matchScore" DESC,j."createdAt" DESC,j.id ASC LIMIT ${limit + 1} OFFSET ${(page - 1) * limit}`;
+  res.json({
+    jobs: jobs.slice(0, limit).map((j) => ({
+      ...j,
+      matchScore: undefined,
+      matchedSkills: j.requiredSkills.filter((s) =>
+        skills.includes(s.toLowerCase()),
+      ),
+    })),
+    page,
+    hasMore: jobs.length > limit,
+  });
+});
 router.get("/:id/membership", requireAuth, async (req, res) => {
   const [application, review] = await prisma.$transaction([
     prisma.application.findUnique({
@@ -90,6 +110,14 @@ router.get("/:id", async (req, res) => {
 });
 router.post("/", requireAuth, async (req, res) => {
   if (!canPost(req.user)) fail("Approved posting access required", 403);
+  const requiredSkills = req.body.requiredSkills || [];
+  if (!Array.isArray(requiredSkills) || requiredSkills.length > 10)
+    fail("Choose up to 10 required skills");
+  const normalizedSkills = [
+    ...new Set(
+      requiredSkills.map((s) => text(s, "Required skill", 1, 50).toLowerCase()),
+    ),
+  ];
   const title = text(req.body.title, "Title", 5, 140);
   const description = text(req.body.description, "Description", 20, 5000);
   const category = text(req.body.category, "Category", 2, 80);
@@ -122,6 +150,7 @@ router.post("/", requireAuth, async (req, res) => {
     await prisma.job.create({
       data: {
         title,
+        requiredSkills: normalizedSkills,
         description,
         category,
         amount,
@@ -148,6 +177,14 @@ async function change(req, res, status) {
         where: { jobId: existing.id, status: "PENDING" },
         data: { status: "REJECTED" },
       });
+    await notify(
+      tx,
+      [existing.postedById, existing.assignedToId].filter(
+        (id) => id !== req.user.id,
+      ),
+      `Project update: ${status.toLowerCase().replaceAll("_", " ")}`,
+      existing.id,
+    );
     return updated;
   });
   res.json(job);

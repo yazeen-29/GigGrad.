@@ -17,6 +17,7 @@ const userSelect = {
   id: true,
   name: true,
   email: true,
+  emailVerifiedAt: true,
   role: true,
   college: true,
   rating: true,

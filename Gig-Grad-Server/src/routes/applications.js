@@ -1,3 +1,6 @@
+const notify = require("../lib/notifications");
+const { link } = require("../lib/profile");
+const paging = require("../lib/paging");
 const router = require("express").Router();
 const prisma = require("../lib/prisma");
 const requireAuth = require("../middleware/auth");
@@ -6,6 +9,19 @@ router.use(requireAuth);
 router.post("/", async (req, res) => {
   const jobId = text(req.body.jobId, "Job ID", 1, 100);
   const coverNote = text(req.body.coverNote, "Cover note", 10, 2000);
+  const sampleUrl = link(req.body.sampleUrl || "", "Sample work link");
+  const deliveryPlan = req.body.deliveryPlan
+    ? text(req.body.deliveryPlan, "Delivery plan", 5, 500)
+    : "";
+  const note = [
+    coverNote,
+    sampleUrl ? `Sample: ${sampleUrl}` : "",
+    deliveryPlan ? `Delivery: ${deliveryPlan}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  if (note.length > 2000)
+    fail("Keep the full application within 2000 characters");
   if (req.user.role !== "STUDENT")
     fail("Only student accounts can apply for gigs", 403);
   const app = await prisma.$transaction(
@@ -15,9 +31,16 @@ router.post("/", async (req, res) => {
       if (job.status !== "OPEN" || job.deadline <= new Date())
         fail("Applications are closed", 409);
       if (job.postedById === req.user.id) fail("Cannot apply to your own job");
-      return tx.application.create({
-        data: { jobId, coverNote, applicantId: req.user.id },
+      const created = await tx.application.create({
+        data: { jobId, coverNote: note, applicantId: req.user.id },
       });
+      await notify(
+        tx,
+        [job.postedById],
+        "Your gig has a new application",
+        jobId,
+      );
+      return created;
     },
     { isolationLevel: "Serializable" },
   );
@@ -35,7 +58,7 @@ router.get("/mine", async (req, res) =>
         },
       },
       orderBy: { appliedAt: "desc" },
-      take: 200,
+      ...paging(req),
     }),
   ),
 );
@@ -58,7 +81,7 @@ router.get("/job/:jobId", async (req, res) => {
         },
       },
       orderBy: { appliedAt: "desc" },
-      take: 200,
+      ...paging(req),
     }),
   );
 });
@@ -78,15 +101,37 @@ router.patch("/:id/:action", async (req, res) => {
       // Conditional update serializes competing hires on the same job.
       const claimed = await tx.job.updateMany({
         where: { id: app.jobId, status: "OPEN", assignedToId: null },
-        data: { status: "IN_PROGRESS", assignedToId: app.applicantId },
+        data: {
+          status: "IN_PROGRESS",
+          assignedToId: app.applicantId,
+          hiredAt: new Date(),
+        },
       });
       if (claimed.count !== 1)
         fail("Another applicant has already been hired", 409);
+      const others = await tx.application.findMany({
+        where: { jobId: app.jobId, id: { not: app.id }, status: "PENDING" },
+        select: { applicantId: true },
+      });
+      await notify(
+        tx,
+        others.map((a) => a.applicantId),
+        "Application not selected",
+        app.jobId,
+      );
       await tx.application.updateMany({
         where: { jobId: app.jobId, id: { not: app.id }, status: "PENDING" },
         data: { status: "REJECTED" },
       });
     }
+    await notify(
+      tx,
+      [app.applicantId],
+      req.params.action === "accept"
+        ? "You’ve been hired"
+        : "Application not selected",
+      app.jobId,
+    );
     await tx.application.update({
       where: { id: app.id, status: "PENDING" },
       data: {

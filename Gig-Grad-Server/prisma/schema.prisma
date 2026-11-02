@@ -49,6 +49,13 @@ model User {
   posterStatus String @default("none")
   posterType String?
   posterReason String?
+  learningGoal String @default("")
+  emailVerifiedAt DateTime?
+  sessions Session[]
+  authTokens AuthToken[]
+  bookmarks SavedGig[]
+  learning LearningProgress[]
+  notifications Notification[]
   skills String[] @default([])
   college   String
   avatarUrl String?
@@ -85,6 +92,9 @@ model Job {
   category     String
   amount       Decimal @db.Decimal(10, 2)
   status       JobStatus @default(OPEN)
+  hiredAt DateTime?
+  requiredSkills String[] @default([])
+  savedBy SavedGig[]
   urgent       Boolean   @default(false)
   fileUrl      String?
   deadline     DateTime
@@ -212,4 +222,46 @@ model ScholarshipTracking {
   updatedAt DateTime @updatedAt
   @@unique([userId, scholarshipId])
   @@index([userId, remindOn])
+}
+
+model Session {
+ id String @id
+ userId String
+ user User @relation(fields:[userId], references:[id], onDelete:Cascade)
+ expiresAt DateTime
+ @@index([userId])
+}
+model AuthToken {
+ id String @id
+ userId String
+ user User @relation(fields:[userId], references:[id], onDelete:Cascade)
+ kind String
+ expiresAt DateTime
+ @@index([userId,kind])
+}
+model SavedGig {
+ userId String
+ jobId String
+ user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+ job Job @relation(fields:[jobId],references:[id],onDelete:Cascade)
+ createdAt DateTime @default(now())
+ @@id([userId,jobId])
+}
+model LearningProgress {
+ userId String
+ pathId String
+ user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+ milestones Int[] @default([])
+ updatedAt DateTime @updatedAt
+ @@id([userId,pathId])
+}
+model Notification {
+ id String @id @default(uuid())
+ userId String
+ user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+ title String
+ jobId String
+ isRead Boolean @default(false)
+ createdAt DateTime @default(now())
+ @@index([userId,createdAt])
 }

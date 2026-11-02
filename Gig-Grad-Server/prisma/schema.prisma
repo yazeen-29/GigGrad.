@@ -52,6 +52,13 @@ model User {
   skills String[] @default([])
   college   String
   avatarUrl String?
+  headline String @default("")
+  portfolioUrl String @default("")
+  resumeUrl String @default("")
+  githubUrl String @default("")
+  linkedinUrl String @default("")
+  achievements Json @default("[]")
+  projects Json @default("[]")
   bio       String?
   rating    Float    @default(0)
   createdAt DateTime @default(now())

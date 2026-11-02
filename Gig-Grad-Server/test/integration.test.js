@@ -698,6 +698,75 @@ test(
         },
       );
       await t.test(
+        "student showcases persist publicly, validate links and restrict edits",
+        async () => {
+          const showcase = {
+            headline: "Frontend developer",
+            portfolioUrl: "https://example.com/portfolio",
+            resumeUrl: "https://example.com/cv.pdf",
+            githubUrl: "https://github.com/student",
+            linkedinUrl: "https://www.linkedin.com/in/student",
+            projects: [
+              {
+                title: "Campus website",
+                description: "Built with React",
+                url: "https://example.com/project",
+              },
+            ],
+            achievements: [
+              {
+                title: "Hackathon finalist",
+                issuer: "Campus club",
+                year: "2026",
+                url: "",
+              },
+            ],
+          };
+          const saved = await api("/api/users/me", {
+            method: "PATCH",
+            token: student.token,
+            body: showcase,
+          });
+          assert.equal(saved.status, 200, JSON.stringify(saved.body));
+          const publicProfile = await api(`/api/users/${student.user.id}`);
+          for (const key of Object.keys(showcase))
+            assert.deepEqual(publicProfile.body.user[key], showcase[key]);
+          assert.equal(publicProfile.body.user.email, undefined);
+          assert.equal(publicProfile.body.user.password, undefined);
+          const own = await api("/api/users/me/profile", {
+            token: student.token,
+          });
+          assert.deepEqual(own.body.user.projects, showcase.projects);
+          assert.equal(
+            (
+              await api("/api/users/me", {
+                method: "PATCH",
+                token: student.token,
+                body: { resumeUrl: "javascript:alert(1)" },
+              })
+            ).status,
+            400,
+          );
+          assert.equal(
+            (
+              await api("/api/users/me", {
+                method: "PATCH",
+                token: poster.token,
+                body: { headline: "Student" },
+              })
+            ).status,
+            403,
+          );
+          const cleared = await api("/api/users/me", {
+            method: "PATCH",
+            token: student.token,
+            body: { projects: [], achievements: [], resumeUrl: "" },
+          });
+          assert.equal(cleared.status, 200);
+          assert.deepEqual(cleared.body.projects, []);
+        },
+      );
+      await t.test(
         "profile overview returns real portfolio and feedback without leaking private fields",
         async () => {
           const worker = gig.assignedToId === student.user.id ? student : other;

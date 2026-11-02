@@ -109,7 +109,7 @@ const articles = [
       "save",
     ],
     content:
-      "Profile opens as an overview. Select Edit profile to change your name, college, introduction and up to 10 skills. Save changes returns to the overview and persists edits. Completed gigs and received reviews appear automatically. Public profiles do not expose your account email or password.",
+      "Profile opens as an overview. Select Edit profile to change your name, college, introduction and up to 10 skills. Save changes returns to the overview and persists edits. Student profiles also support an optional professional headline, portfolio website, CV link, GitHub and LinkedIn links, up to eight independent projects and up to eight achievements with optional evidence. Add these through Edit profile. Use full HTTPS links and a view-only CV hosted on a service you choose. Showcase details are public and student-provided, not independently verified. Completed GigGrad work and received reviews appear automatically in a separate section. Public profiles do not expose your account email or password.",
     action: { label: "My profile", page: "profile" },
   },
   {

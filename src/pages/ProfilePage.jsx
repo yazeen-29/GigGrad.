@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { getExperience } from "../utils/experience";
 import { usersAPI } from "../lib/api";
+import StudentShowcase, {
+  StudentShowcaseEditor,
+} from "../components/StudentShowcase";
 import Avatar from "../components/ui/Avatar";
 import Loading from "../components/ui/Loading";
 import {
@@ -52,6 +55,15 @@ export default function ProfilePage({
   }, [own, profileId, retry]);
   function edit() {
     setForm({
+      headline: data.user.headline || "",
+      portfolioUrl: data.user.portfolioUrl || "",
+      resumeUrl: data.user.resumeUrl || "",
+      githubUrl: data.user.githubUrl || "",
+      linkedinUrl: data.user.linkedinUrl || "",
+      projects: Array.isArray(data.user.projects) ? data.user.projects : [],
+      achievements: Array.isArray(data.user.achievements)
+        ? data.user.achievements
+        : [],
       name: data.user.name,
       college: data.user.college,
       bio: data.user.bio || "",
@@ -66,8 +78,20 @@ export default function ProfilePage({
     setBusy(true);
     setError("");
     try {
+      const payload = { ...form };
+      if (data.user.role !== "STUDENT")
+        for (const key of [
+          "headline",
+          "portfolioUrl",
+          "resumeUrl",
+          "githubUrl",
+          "linkedinUrl",
+          "projects",
+          "achievements",
+        ])
+          delete payload[key];
       const user = await usersAPI.updateMe({
-        ...form,
+        ...payload,
         skills: [
           ...new Set(
             form.skills
@@ -177,6 +201,9 @@ export default function ProfilePage({
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight mt-4">
             {user.name}
           </h1>
+          {user.role === "STUDENT" && user.headline && (
+            <p className="profile-headline">{user.headline}</p>
+          )}
           <p className="flex items-center gap-2 text-slate-500 mt-3">
             <GraduationCap size={18} />
             {user.college}
@@ -277,6 +304,9 @@ export default function ProfilePage({
               )}
             </label>
           ))}
+          {user.role === "STUDENT" && (
+            <StudentShowcaseEditor form={form} setForm={setForm} busy={busy} />
+          )}
           <p className="text-xs text-slate-500">
             Your account email stays private: {user.email}
           </p>
@@ -331,6 +361,9 @@ export default function ProfilePage({
                 )}
               </div>
             </section>
+            {user.role === "STUDENT" && (
+              <StudentShowcase user={user} own={own} onEdit={edit} />
+            )}
             <section className="profile-section">
               <h2>{experience.portfolioTitle}</h2>
               <p className="text-sm text-slate-500 mt-2">

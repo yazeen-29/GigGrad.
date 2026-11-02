@@ -115,7 +115,7 @@ export default function App() {
       );
       break;
     case "landing":
-      content = <LandingPage {...props} />;
+      content = <LandingPage key={location.key} {...props} />;
       break;
     case "admin-login":
     case "login":

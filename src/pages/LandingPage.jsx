@@ -1,4 +1,5 @@
-import RoleHome from "../components/RoleHome";
+import HeroGigIllustration from "../components/HeroGigIllustration";
+import HomeInspiration from "../components/HomeInspiration";
 import LandingStories from "../components/LandingStories";
 import {
   ArrowRight,
@@ -6,9 +7,7 @@ import {
   Code2,
   Palette,
   FileText,
-  GraduationCap,
   Check,
-  Sparkles,
   ShieldCheck,
 } from "lucide-react";
 const categories = [
@@ -32,10 +31,23 @@ const categories = [
   },
 ];
 export default function LandingPage({ setPage, currentUser }) {
-  if (currentUser)
-    return <RoleHome currentUser={currentUser} setPage={setPage} />;
   return (
-    <div className="landing-page">
+    <div className="landing-page home-expanded">
+      {currentUser && (
+        <div className="home-welcome">
+          <span>
+            Welcome back, <strong>{currentUser.name?.split(" ")[0]}</strong>.
+            Your next chapter is waiting.
+          </span>
+          <button
+            onClick={() =>
+              setPage(currentUser.role === "ADMIN" ? "admin" : "dashboard")
+            }
+          >
+            Open my workspace <ArrowRight size={15} />
+          </button>
+        </div>
+      )}
       <section className="hero-section">
         <div className="max-w-6xl mx-auto px-5 sm:px-6 pt-16 pb-20 lg:pt-24 lg:pb-28 grid lg:grid-cols-2 gap-12 items-center">
           <div className="hero-copy">
@@ -80,65 +92,7 @@ export default function LandingPage({ setPage, currentUser }) {
               </span>
             </div>
           </div>
-          <div className="hero-art relative py-8 px-4 sm:px-10">
-            <div className="absolute inset-2 rounded-full bg-blue-100/60 blur-3xl" />
-            <div className="float-card relative bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xl shadow-blue-900/5 -rotate-2">
-              <div className="flex justify-between items-start">
-                <div className="w-12 h-12 bg-violet-100 text-violet-600 rounded-2xl flex items-center justify-center">
-                  <Palette size={24} />
-                </div>
-                <span className="text-xs bg-emerald-50 text-emerald-700 rounded-full px-3 py-1.5 font-semibold">
-                  A little inspiration
-                </span>
-              </div>
-              <p className="text-xs text-slate-400 uppercase tracking-widest font-bold mt-7">
-                YOUR SKILLS, IN ACTION
-              </p>
-              <h2 className="text-2xl font-bold text-slate-900 mt-3">
-                That thing you’re good at?
-                <br />
-                Someone needs it.
-              </h2>
-              <p className="text-sm text-slate-500 leading-relaxed mt-4">
-                A poster for a campus event. A website for a club. A report that
-                needs a finishing touch.
-              </p>
-              <div className="flex flex-wrap gap-2 my-6">
-                {["Flexible work", "Clear budgets", "Real experience"].map(
-                  (label) => (
-                    <span
-                      key={label}
-                      className="text-xs text-blue-700 bg-blue-50 rounded-lg px-3 py-2 font-medium"
-                    >
-                      {label}
-                    </span>
-                  ),
-                )}
-              </div>
-              <div className="border-t border-slate-100 pt-5 flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-blue-700 text-white flex items-center justify-center">
-                  <GraduationCap size={20} />
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-slate-800">
-                    Made for campus life
-                  </p>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Your next chapter starts with a small gig.
-                  </p>
-                </div>
-              </div>
-            </div>
-            <div className="float-note absolute -bottom-1 right-2 bg-slate-900 text-white rounded-2xl py-4 px-5 shadow-lg rotate-3 flex items-center gap-3">
-              <Sparkles size={21} className="text-amber-300" />
-              <div>
-                <p className="text-sm font-bold">More than pocket money.</p>
-                <p className="text-xs text-slate-400 mt-1">
-                  Build skills. Meet people. Go further.
-                </p>
-              </div>
-            </div>
-          </div>
+          <HeroGigIllustration setPage={setPage} />
         </div>
       </section>
       <section className="max-w-6xl mx-auto px-5 sm:px-6 py-16">
@@ -206,6 +160,7 @@ export default function LandingPage({ setPage, currentUser }) {
           </button>
         </div>
       </section>
+      <HomeInspiration setPage={setPage} />
       <LandingStories setPage={setPage} />
       <section className="max-w-6xl mx-auto px-5 sm:px-6 py-16">
         <div className="rounded-3xl bg-blue-50 border border-blue-100 p-8 sm:p-12 flex flex-col sm:flex-row justify-between gap-6 items-start sm:items-center">
@@ -221,10 +176,18 @@ export default function LandingPage({ setPage, currentUser }) {
             </p>
           </div>
           <button
-            onClick={() => setPage(currentUser ? "request-access" : "login")}
+            onClick={() =>
+              setPage(
+                currentUser
+                  ? currentUser.role === "ADMIN"
+                    ? "admin"
+                    : "dashboard"
+                  : "login",
+              )
+            }
             className="whitespace-nowrap bg-blue-700 text-white px-5 py-3 rounded-xl text-sm font-bold"
           >
-            {currentUser ? "Request posting access" : "Join your campus"} →
+            {currentUser ? "Open your workspace" : "Join your campus"} →
           </button>
         </div>
       </section>

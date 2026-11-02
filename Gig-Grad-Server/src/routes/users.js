@@ -1,5 +1,6 @@
 const router = require("express").Router();
 const prisma = require("../lib/prisma");
+const { showcase } = require("../lib/profile");
 const requireAuth = require("../middleware/auth");
 const { text, fail, userSelect } = require("../lib/validation");
 router.get("/me/dashboard", requireAuth, async (req, res) => {
@@ -33,6 +34,13 @@ async function profile(id, own = false) {
     college: true,
     rating: true,
     bio: true,
+    headline: true,
+    portfolioUrl: true,
+    resumeUrl: true,
+    githubUrl: true,
+    linkedinUrl: true,
+    achievements: true,
+    projects: true,
     skills: true,
     createdAt: true,
     posterType: true,
@@ -97,7 +105,9 @@ router.get("/me/profile", requireAuth, async (req, res) =>
 );
 router.get("/:id", async (req, res) => res.json(await profile(req.params.id)));
 router.patch("/me", requireAuth, async (req, res) => {
-  const data = {};
+  const data = showcase(req.body);
+  if (Object.keys(data).length && req.user.role !== "STUDENT")
+    fail("Student showcase fields are available to student accounts", 403);
   for (const [key, min, max] of [
     ["name", 2, 100],
     ["bio", 0, 2000],

@@ -1,1681 +1,334 @@
-import { useCallback, useEffect, useState } from "react";
-
-import {
-  appsAPI,
-  jobsAPI,
-  getUser,
-} from "../lib/api";
-
-import Card from "../components/ui/Card";
-import Btn from "../components/ui/Btn";
-import Avatar from "../components/ui/Avatar";
-import RatingStars from "../components/ui/RatingStars";
+import { useEffect, useState } from "react";
+import { usersAPI } from "../lib/api";
+import { getExperience } from "../utils/experience";
 import StatusBadge from "../components/ui/StatusBadge";
+import AppBadge from "../components/ui/AppBadge";
 import Loading from "../components/ui/Loading";
-
+import EmptyState from "../components/ui/EmptyState";
+import AdminPage from "./AdminPage";
 import {
+  ArrowUpRight,
   Briefcase,
-  Clock,
   CheckCircle,
-  Star,
-  Send,
-  Users,
+  Clock,
+  GraduationCap,
+  MessageCircle,
   RefreshCw,
-  ChevronRight,
-  UserCheck,
-  XCircle,
-  Loader2,
+  Sparkles,
+  Users,
 } from "lucide-react";
-
-
-export default function DashboardPage({
-  setPage,
-  setSelectedJob,
-  currentUser,
-}) {
-  // ─────────────────────────────────────────────
-  // Current user
-  // ─────────────────────────────────────────────
-
-  const user = currentUser || getUser();
-
-  const isPoster =
-    user?.role === "TEACHER" ||
-    user?.role === "ADMIN";
-
-  const isStudent =
-    user?.role === "STUDENT";
-
-
-  // ─────────────────────────────────────────────
-  // Dashboard data
-  // ─────────────────────────────────────────────
-
-  const [applications, setApplications] =
-    useState([]);
-
-  const [myJobs, setMyJobs] =
-    useState([]);
-
-  /*
-   * Incoming applications for jobs posted by
-   * the teacher/admin.
-   *
-   * Shape:
-   *
-   * {
-   *   [jobId]: [...]
-   * }
-   */
-  const [jobApplications, setJobApplications] =
-    useState({});
-
-  const [loading, setLoading] =
-    useState(true);
-
-  const [refreshing, setRefreshing] =
-    useState(false);
-
-  const [error, setError] =
-    useState(null);
-
-
-  // ─────────────────────────────────────────────
-  // Default tab
-  //
-  // Teacher/Admin → My Posted Jobs
-  // Student       → My Applications
-  // ─────────────────────────────────────────────
-
-  const [activeTab, setActiveTab] =
-    useState(isPoster ? "posted" : "applied");
-
-
-  // ─────────────────────────────────────────────
-  // Accept / reject state
-  // ─────────────────────────────────────────────
-
-  const [processingApplication, setProcessingApplication] =
-    useState(null);
-
-
-  // ─────────────────────────────────────────────
-  // Load dashboard
-  // ─────────────────────────────────────────────
-
-  const loadDashboard = useCallback(
-    async (isRefresh = false) => {
-      if (!user?.id) {
-        setLoading(false);
-        return;
-      }
-
-      try {
-        if (isRefresh) {
-          setRefreshing(true);
-        } else {
-          setLoading(true);
-        }
-
-        setError(null);
-
-
-        // ───────────────────────────────────────
-        // STUDENT
-        //
-        // Fetch applications made by student.
-        // ───────────────────────────────────────
-
-        if (isStudent) {
-          const apps =
-            await appsAPI.mine();
-
-          setApplications(
-            Array.isArray(apps)
-              ? apps
-              : []
-          );
-
-          setMyJobs([]);
-          setJobApplications({});
-
-          return;
-        }
-
-
-        // ───────────────────────────────────────
-        // TEACHER / ADMIN
-        //
-        // Fetch jobs posted by this user.
-        // ───────────────────────────────────────
-
-        if (isPoster) {
-          const jobs =
-            await jobsAPI.getMine();
-
-          const safeJobs =
-            Array.isArray(jobs)
-              ? jobs
-              : [];
-
-          setMyJobs(safeJobs);
-
-
-          /*
-           * IMPORTANT:
-           *
-           * jobsAPI.getMine() gives us the job and
-           * _count.applications.
-           *
-           * But to display the actual applicants,
-           * we must call:
-           *
-           * GET /api/applications/job/:jobId
-           *
-           * for each job.
-           */
-
-          const applicationEntries =
-            await Promise.all(
-              safeJobs.map(
-                async (job) => {
-                  try {
-                    const apps =
-                      await appsAPI.forJob(
-                        job.id
-                      );
-
-                    return [
-                      job.id,
-                      Array.isArray(apps)
-                        ? apps
-                        : [],
-                    ];
-
-                  } catch (err) {
-                    console.error(
-                      `Failed to load applications for job ${job.id}:`,
-                      err
-                    );
-
-                    return [
-                      job.id,
-                      [],
-                    ];
-                  }
-                }
-              )
-            );
-
-
-          const applicationMap =
-            Object.fromEntries(
-              applicationEntries
-            );
-
-          setJobApplications(
-            applicationMap
-          );
-
-          setApplications([]);
-        }
-
-      } catch (err) {
-        console.error(
-          "Dashboard loading error:",
-          err
-        );
-
-        setError(
-          err?.message ||
-          "Failed to load dashboard"
-        );
-
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    },
-    [
-      user?.id,
-      isStudent,
-      isPoster,
-    ]
+export default function DashboardPage(props) {
+  return props.currentUser.role === "ADMIN" ? (
+    <AdminPage {...props} />
+  ) : (
+    <WorkDashboard key={props.currentUser.id} {...props} />
   );
-
-
-  // ─────────────────────────────────────────────
-  // Initial load
-  // ─────────────────────────────────────────────
-
+}
+function WorkDashboard({ currentUser: user, setPage }) {
+  const experience = getExperience(user);
+  const [data, setData] = useState({ jobs: [], applications: [] }),
+    [tab, setTab] = useState(experience.canPost ? "posted" : "applied"),
+    [loading, setLoading] = useState(true),
+    [error, setError] = useState(""),
+    [version, setVersion] = useState(0);
   useEffect(() => {
-    loadDashboard(false);
-  }, [loadDashboard]);
-
-
-  // ─────────────────────────────────────────────
-  // Refresh when returning to dashboard
-  //
-  // Useful when:
-  //
-  // Student applies → goes dashboard
-  // Teacher opens dashboard after student applies
-  // ─────────────────────────────────────────────
-
-  useEffect(() => {
-    const handleFocus = () => {
-      loadDashboard(true);
-    };
-
-    window.addEventListener(
-      "focus",
-      handleFocus
-    );
-
-    return () => {
-      window.removeEventListener(
-        "focus",
-        handleFocus
-      );
-    };
-  }, [loadDashboard]);
-
-
-  // ─────────────────────────────────────────────
-  // Manual refresh
-  // ─────────────────────────────────────────────
-
-  const refresh = () => {
-    loadDashboard(true);
-  };
-
-
-  // ─────────────────────────────────────────────
-  // Open job detail
-  // ─────────────────────────────────────────────
-
-  const openJob = (job) => {
-    if (!job?.id) return;
-
-    if (
-      typeof setSelectedJob ===
-      "function"
-    ) {
-      setSelectedJob(job);
+    let active = true;
+    async function load() {
+      setLoading(true);
+      setError("");
+      try {
+        const result = await usersAPI.dashboard();
+        if (active) setData(result);
+      } catch (err) {
+        if (active) setError(err.message);
+      } finally {
+        if (active) setLoading(false);
+      }
     }
-
-    /*
-     * IMPORTANT:
-     *
-     * Your current App navigation expects:
-     *
-     * setPage("job-detail", job)
-     *
-     * so JobDetailPage receives the actual
-     * backend job object.
-     */
-
-    setPage(
-      "job-detail",
-      job
-    );
-  };
-
-
-  // ─────────────────────────────────────────────
-  // Accept application
-  // ─────────────────────────────────────────────
-
-  const acceptApplication =
-    async (application) => {
-      if (!application?.id) return;
-
-      const confirmed =
-        window.confirm(
-          `Hire ${
-            application.applicant?.name ||
-            "this student"
-          } for this job?`
-        );
-
-      if (!confirmed) return;
-
-      setProcessingApplication(
-        application.id
-      );
-
-      try {
-        await appsAPI.accept(
-          application.id
-        );
-
-        /*
-         * Reload everything so:
-         *
-         * application → ACCEPTED
-         * job → IN_PROGRESS
-         * assignedTo → student
-         * stats → updated
-         */
-
-        await loadDashboard(true);
-
-      } catch (err) {
-        alert(
-          err?.message ||
-          "Failed to accept application"
-        );
-      } finally {
-        setProcessingApplication(
-          null
-        );
-      }
+    load();
+    return () => {
+      active = false;
     };
-
-
-  // ─────────────────────────────────────────────
-  // Reject application
-  // ─────────────────────────────────────────────
-
-  const rejectApplication =
-    async (application) => {
-      if (!application?.id) return;
-
-      const confirmed =
-        window.confirm(
-          `Reject ${
-            application.applicant?.name ||
-            "this application"
-          }?`
-        );
-
-      if (!confirmed) return;
-
-      setProcessingApplication(
-        application.id
-      );
-
-      try {
-        /*
-         * Your frontend api.js contains reject().
-         */
-        await appsAPI.reject(
-          application.id
-        );
-
-        await loadDashboard(true);
-
-      } catch (err) {
-        alert(
-          err?.message ||
-          "Failed to reject application"
-        );
-      } finally {
-        setProcessingApplication(
-          null
-        );
-      }
-    };
-
-
-  // ─────────────────────────────────────────────
-  // Loading
-  // ─────────────────────────────────────────────
-
-  if (loading) {
-    return (
-      <div className="max-w-6xl mx-auto px-4 py-12">
-        <Loading
-          label="Loading dashboard…"
-        />
-      </div>
-    );
-  }
-
-
-  // ─────────────────────────────────────────────
-  // Stats
-  // ─────────────────────────────────────────────
-
-  const totalPosted =
-    myJobs.length;
-
-  const activeJobs =
-    myJobs.filter(
-      (job) =>
-        job.status === "OPEN" ||
-        job.status === "IN_PROGRESS"
-    ).length;
-
-  const completedJobs =
-    myJobs.filter(
-      (job) =>
-        job.status === "COMPLETED"
-    ).length;
-
-
-  const totalIncomingApplications =
-    Object.values(
-      jobApplications
-    ).reduce(
-      (total, apps) =>
-        total + apps.length,
-      0
-    );
-
-
-  const acceptedApplications =
-    applications.filter(
+  }, [version]);
+  const workerView = tab === "applied",
+    completed = data.applications.filter(
+      (app) => app.status === "ACCEPTED" && app.job.status === "COMPLETED",
+    ),
+    active = data.applications.filter(
       (app) =>
-        app.status === "ACCEPTED"
-    ).length;
-
-
-  const pendingApplications =
-    applications.filter(
-      (app) =>
-        app.status === "PENDING"
-    ).length;
-
-
-  // ─────────────────────────────────────────────
-  // Render
-  // ─────────────────────────────────────────────
-
+        app.status === "ACCEPTED" &&
+        ["IN_PROGRESS", "PENDING_APPROVAL"].includes(app.job.status),
+    ),
+    awaiting = data.jobs.filter((job) => job.status === "PENDING_APPROVAL");
+  const stats = workerView
+    ? [
+        {
+          label: "My applications",
+          value: data.applications.length,
+          icon: Briefcase,
+        },
+        { label: "Active assignments", value: active.length, icon: Clock },
+        { label: "Completed gigs", value: completed.length, icon: CheckCircle },
+        {
+          label: "Completed work value",
+          value: `₹${completed.reduce((sum, app) => sum + Number(app.job.amount), 0).toLocaleString("en-IN")}`,
+          icon: Sparkles,
+        },
+      ]
+    : [
+        {
+          label:
+            experience.kind === "faculty"
+              ? "Academic briefs"
+              : "Published projects",
+          value: data.jobs.length,
+          icon: Briefcase,
+        },
+        {
+          label: "Awaiting your review",
+          value: awaiting.length,
+          icon: CheckCircle,
+        },
+        {
+          label: "Incoming applications",
+          value: data.jobs
+            .filter((job) => job.status === "OPEN")
+            .reduce((sum, job) => sum + job._count.applications, 0),
+          icon: Users,
+        },
+        {
+          label: "Active projects",
+          value: data.jobs.filter((job) =>
+            ["IN_PROGRESS", "PENDING_APPROVAL"].includes(job.status),
+          ).length,
+          icon: Clock,
+        },
+      ];
+  const profileComplete = !!user.bio?.trim() && !!user.skills?.length;
+  const title =
+    experience.kind === "student"
+      ? profileComplete
+        ? "Your profile is ready for its next opportunity."
+        : "Your skills deserve to be seen."
+      : experience.kind === "faculty"
+        ? "A clear academic brief brings the right support."
+        : experience.kind === "staff"
+          ? "Give your campus team a reliable extra pair of hands."
+          : "Your next club project starts with a clear brief.";
+  const visibleJobs = tab === "review" ? awaiting : data.jobs;
   return (
-    <div className="max-w-6xl mx-auto px-4 py-6">
-
-
-      {/* ═══════════════════════════════════════════
-          HEADER
-      ═══════════════════════════════════════════ */}
-
-      <div className="flex items-center justify-between gap-4 mb-6">
-
-        <div className="flex items-center gap-4">
-
-          <Avatar
-            name={
-              user?.name ||
-              "User"
-            }
-            size="xl"
-            role={user?.role}
-          />
-
-          <div>
-
-            <h1 className="text-xl font-bold text-slate-900">
-              {user?.name ||
-                "Welcome to GigGrad"}
-            </h1>
-
-            <p className="text-sm text-slate-400">
-              {user?.college ||
-                "GigGrad member"}
-            </p>
-
-            <div className="flex items-center gap-3 mt-1.5">
-
-              <RatingStars
-                rating={
-                  Number(
-                    user?.rating || 0
-                  )
-                }
-              />
-
-              <span className="text-xs text-slate-400">
-                •
-              </span>
-
-              <span className="text-xs text-slate-500 font-medium">
-                {isPoster
-                  ? `${completedJobs} jobs completed`
-                  : `${acceptedApplications} jobs hired`}
-              </span>
-
-            </div>
-
-          </div>
-
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10">
+      <div className="flex flex-wrap justify-between gap-5 mb-8">
+        <div>
+          <span className="eyebrow">
+            YOUR CAMPUS WORKSPACE · {experience.label}
+          </span>
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight mt-3">
+            {experience.heading}
+          </h1>
+          <p className="text-sm text-slate-500 mt-3 max-w-3xl">
+            {experience.subtitle}
+          </p>
         </div>
-
-
-        {/* Refresh */}
-
         <button
-          type="button"
-          onClick={refresh}
-          disabled={refreshing}
-          title="Refresh dashboard"
-          className="p-2.5 rounded-lg border border-slate-200 bg-white text-slate-500 hover:text-blue-700 hover:border-blue-200 transition-colors disabled:opacity-50"
+          aria-label="Refresh dashboard"
+          disabled={loading}
+          onClick={() => setVersion(version + 1)}
+          className="self-start flex items-center gap-2 px-4 py-3 border border-slate-200 rounded-xl bg-white text-sm text-slate-600 font-semibold"
         >
-          <RefreshCw
-            size={16}
-            className={
-              refreshing
-                ? "animate-spin"
-                : ""
-            }
-          />
+          <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+          Refresh
         </button>
-
       </div>
-
-
-      {/* ═══════════════════════════════════════════
-          STATS
-      ═══════════════════════════════════════════ */}
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-
-        {isPoster ? (
-
-          <>
-
-            <StatCard
-              label="Jobs Posted"
-              value={totalPosted}
-              icon={Briefcase}
-              color="text-blue-600 bg-blue-50 border-blue-200"
-            />
-
-            <StatCard
-              label="Active Jobs"
-              value={activeJobs}
-              icon={Clock}
-              color="text-amber-600 bg-amber-50 border-amber-200"
-            />
-
-            <StatCard
-              label="Completed"
-              value={completedJobs}
-              icon={CheckCircle}
-              color="text-emerald-600 bg-emerald-50 border-emerald-200"
-            />
-
-            <StatCard
-              label="Your Rating"
-              value={`${Number(
-                user?.rating || 0
-              ).toFixed(1)}★`}
-              icon={Star}
-              color="text-violet-600 bg-violet-50 border-violet-200"
-            />
-
-          </>
-
-        ) : (
-
-          <>
-
-            <StatCard
-              label="Applications"
-              value={
-                applications.length
-              }
-              icon={Send}
-              color="text-violet-600 bg-violet-50 border-violet-200"
-            />
-
-            <StatCard
-              label="Hired"
-              value={
-                acceptedApplications
-              }
-              icon={CheckCircle}
-              color="text-emerald-600 bg-emerald-50 border-emerald-200"
-            />
-
-            <StatCard
-              label="Pending"
-              value={
-                pendingApplications
-              }
-              icon={Clock}
-              color="text-amber-600 bg-amber-50 border-amber-200"
-            />
-
-            <StatCard
-              label="Your Rating"
-              value={`${Number(
-                user?.rating || 0
-              ).toFixed(1)}★`}
-              icon={Star}
-              color="text-blue-600 bg-blue-50 border-blue-200"
-            />
-
-          </>
-
-        )}
-
-      </div>
-
-
-      {/* ═══════════════════════════════════════════
-          ERROR
-      ═══════════════════════════════════════════ */}
-
       {error && (
-
-        <div className="mb-5 bg-red-50 border border-red-200 rounded-xl p-4">
-
-          <div className="flex items-center justify-between gap-4">
-
-            <div>
-
-              <p className="text-sm font-semibold text-red-700">
-                Dashboard update failed
-              </p>
-
-              <p className="text-xs text-red-500 mt-1">
-                {error}
-              </p>
-
-            </div>
-
-            <button
-              type="button"
-              onClick={refresh}
-              className="text-xs font-semibold text-red-700 hover:underline"
-            >
-              Retry
-            </button>
-
-          </div>
-
-        </div>
-
-      )}
-
-
-      {/* ═══════════════════════════════════════════
-          TABS
-      ═══════════════════════════════════════════ */}
-
-      <div className="flex gap-1 border-b border-slate-200 mb-5">
-
-        {isPoster ? (
-
-          <>
-
-            <DashboardTab
-              active={
-                activeTab === "posted"
-              }
-              onClick={() =>
-                setActiveTab("posted")
-              }
-              label="My Posted Jobs"
-              count={totalPosted}
-            />
-
-            <DashboardTab
-              active={
-                activeTab === "applicants"
-              }
-              onClick={() =>
-                setActiveTab(
-                  "applicants"
-                )
-              }
-              label="Applicants"
-              count={
-                totalIncomingApplications
-              }
-            />
-
-            <DashboardTab
-              active={
-                activeTab === "profile"
-              }
-              onClick={() =>
-                setActiveTab("profile")
-              }
-              label="My Profile"
-            />
-
-          </>
-
-        ) : (
-
-          <>
-
-            <DashboardTab
-              active={
-                activeTab === "applied"
-              }
-              onClick={() =>
-                setActiveTab("applied")
-              }
-              label="My Applications"
-              count={
-                applications.length
-              }
-            />
-
-            <DashboardTab
-              active={
-                activeTab === "profile"
-              }
-              onClick={() =>
-                setActiveTab("profile")
-              }
-              label="My Profile"
-            />
-
-          </>
-
-        )}
-
-      </div>
-
-
-      {/* ═══════════════════════════════════════════
-          TEACHER — MY POSTED JOBS
-      ═══════════════════════════════════════════ */}
-
-      {isPoster &&
-        activeTab === "posted" && (
-
-          <div className="space-y-3">
-
-            {myJobs.length === 0 ? (
-
-              <Card className="p-10 text-center">
-
-                <Briefcase
-                  size={28}
-                  className="mx-auto text-slate-300 mb-3"
-                />
-
-                <h3 className="font-semibold text-slate-900 mb-1">
-                  No jobs posted yet
-                </h3>
-
-                <p className="text-sm text-slate-400 mb-4">
-                  Post your first campus job to
-                  start receiving applications.
-                </p>
-
-                <Btn
-                  onClick={() =>
-                    setPage("post-job")
-                  }
-                  icon={
-                    <Briefcase size={14} />
-                  }
-                >
-                  Post a Job
-                </Btn>
-
-              </Card>
-
-            ) : (
-
-              myJobs.map((job) => {
-
-                const apps =
-                  jobApplications[
-                    job.id
-                  ] || [];
-
-                const count =
-                  job._count?.applications ??
-                  apps.length;
-
-                return (
-                  <PostedJobCard
-                    key={job.id}
-                    job={job}
-                    applications={apps}
-                    applicantCount={count}
-                    onOpen={() =>
-                      openJob(job)
-                    }
-                    onViewApplicants={() =>
-                      setPage(
-                        "applicants",
-                        job
-                      )
-                    }
-                  />
-                );
-              })
-
-            )}
-
-          </div>
-
-        )}
-
-
-      {/* ═══════════════════════════════════════════
-          TEACHER — ALL APPLICANTS
-      ═══════════════════════════════════════════ */}
-
-      {isPoster &&
-        activeTab === "applicants" && (
-
-          <div className="space-y-5">
-
-            {myJobs.length === 0 ? (
-
-              <Card className="p-10 text-center">
-
-                <Users
-                  size={28}
-                  className="mx-auto text-slate-300 mb-3"
-                />
-
-                <p className="text-sm text-slate-400">
-                  No posted jobs yet.
-                </p>
-
-              </Card>
-
-            ) : (
-
-              myJobs.map((job) => {
-
-                const apps =
-                  jobApplications[
-                    job.id
-                  ] || [];
-
-                return (
-                  <Card
-                    key={job.id}
-                    className="overflow-hidden"
-                  >
-
-                    <div className="p-4 border-b border-slate-100 flex items-center justify-between gap-3">
-
-                      <div>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            openJob(job)
-                          }
-                          className="font-semibold text-slate-900 text-sm hover:text-blue-700 text-left"
-                        >
-                          {job.title}
-                        </button>
-
-                        <p className="text-xs text-slate-400 mt-1">
-                          {apps.length} applicant
-                          {apps.length !== 1
-                            ? "s"
-                            : ""}
-                        </p>
-
-                      </div>
-
-                      <StatusBadge
-                        status={
-                          job.status
-                        }
-                      />
-
-                    </div>
-
-
-                    <div className="p-4">
-
-                      {apps.length === 0 ? (
-
-                        <p className="text-sm text-slate-400">
-                          No applications yet.
-                        </p>
-
-                      ) : (
-
-                        <div className="space-y-3">
-
-                          {apps.map(
-                            (application) => (
-
-                              <ApplicantRow
-                                key={
-                                  application.id
-                                }
-                                application={
-                                  application
-                                }
-                                processing={
-                                  processingApplication ===
-                                  application.id
-                                }
-                                canProcess={
-                                  job.status ===
-                                  "OPEN"
-                                }
-                                onAccept={() =>
-                                  acceptApplication(
-                                    application
-                                  )
-                                }
-                                onReject={() =>
-                                  rejectApplication(
-                                    application
-                                  )
-                                }
-                              />
-
-                            )
-                          )}
-
-                        </div>
-
-                      )}
-
-                    </div>
-
-                  </Card>
-                );
-
-              })
-
-            )}
-
-          </div>
-
-        )}
-
-
-      {/* ═══════════════════════════════════════════
-          STUDENT — APPLICATIONS
-      ═══════════════════════════════════════════ */}
-
-      {!isPoster &&
-        activeTab === "applied" && (
-
-          <div className="space-y-3">
-
-            {applications.length === 0 ? (
-
-              <Card className="p-10 text-center">
-
-                <Send
-                  size={28}
-                  className="mx-auto text-slate-300 mb-3"
-                />
-
-                <h3 className="font-semibold text-slate-900 mb-1">
-                  No applications yet
-                </h3>
-
-                <p className="text-sm text-slate-400 mb-4">
-                  Browse available jobs and
-                  submit your first application.
-                </p>
-
-                <Btn
-                  onClick={() =>
-                    setPage("jobs")
-                  }
-                  icon={
-                    <Briefcase size={14} />
-                  }
-                >
-                  Browse Jobs
-                </Btn>
-
-              </Card>
-
-            ) : (
-
-              applications.map(
-                (application) => {
-
-                  const job =
-                    application.job;
-
-                  if (!job) {
-                    return null;
-                  }
-
-                  return (
-                    <Card
-                      key={
-                        application.id
-                      }
-                      className="p-4"
-                    >
-
-                      <div className="flex items-center justify-between gap-4">
-
-                        <div className="min-w-0">
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              openJob(job)
-                            }
-                            className="font-semibold text-slate-900 text-sm hover:text-blue-700 text-left truncate block max-w-full"
-                          >
-                            {job.title}
-                          </button>
-
-                          <p className="text-xs text-slate-400 mt-1">
-                            ₹
-                            {Number(
-                              job.amount || 0
-                            ).toLocaleString(
-                              "en-IN"
-                            )}
-
-                            {" · "}
-
-                            {job.category ||
-                              "General"}
-                          </p>
-
-                        </div>
-
-                        <div className="flex items-center gap-2 flex-shrink-0">
-
-                          <ApplicationStatus
-                            status={
-                              application.status
-                            }
-                          />
-
-                          <ChevronRight
-                            size={15}
-                            className="text-slate-300"
-                          />
-
-                        </div>
-
-                      </div>
-
-
-                      {application.coverNote && (
-
-                        <p className="text-xs text-slate-500 mt-3 pt-3 border-t border-slate-100 line-clamp-2">
-                          {application.coverNote}
-                        </p>
-
-                      )}
-
-                    </Card>
-                  );
-                }
-              )
-
-            )}
-
-          </div>
-
-        )}
-
-
-      {/* ═══════════════════════════════════════════
-          PROFILE
-      ═══════════════════════════════════════════ */}
-
-      {activeTab === "profile" && (
-
-        <Card className="p-6">
-
-          <div className="flex items-center gap-4">
-
-            <Avatar
-              name={
-                user?.name ||
-                "User"
-              }
-              size="lg"
-              role={user?.role}
-            />
-
-            <div>
-
-              <h2 className="font-bold text-slate-900">
-                {user?.name ||
-                  "User"}
-              </h2>
-
-              <p className="text-sm text-slate-400">
-                {user?.email}
-              </p>
-
-              <p className="text-sm text-slate-400">
-                {user?.college}
-              </p>
-
-            </div>
-
-          </div>
-
-
-          <div className="mt-5 pt-5 border-t border-slate-100 grid grid-cols-2 gap-4">
-
-            <div>
-
-              <p className="text-xs text-slate-400">
-                Role
-              </p>
-
-              <p className="text-sm font-semibold text-slate-700 mt-1">
-                {user?.role}
-              </p>
-
-            </div>
-
-            <div>
-
-              <p className="text-xs text-slate-400">
-                Rating
-              </p>
-
-              <p className="text-sm font-semibold text-slate-700 mt-1">
-                {Number(
-                  user?.rating || 0
-                ).toFixed(1)}
-                ★
-              </p>
-
-            </div>
-
-          </div>
-
-        </Card>
-
-      )}
-
-    </div>
-  );
-}
-
-
-/* ═══════════════════════════════════════════════════════════════
-   STAT CARD
-═══════════════════════════════════════════════════════════════ */
-
-function StatCard({
-  label,
-  value,
-  icon: Icon,
-  color,
-}) {
-  const parts =
-    color.split(" ");
-
-  return (
-    <Card
-      className={`p-4 border ${
-        parts
-          .slice(2)
-          .join(" ")
-      }`}
-    >
-
-      <div className="flex items-center gap-2 mb-1">
-
-        <Icon
-          size={13}
-          className={
-            parts[0]
-          }
-        />
-
-        <span className="text-xs text-slate-400 font-medium">
-          {label}
-        </span>
-
-      </div>
-
-      <p
-        className={`text-xl font-extrabold ${parts[0]}`}
-      >
-        {value}
-      </p>
-
-    </Card>
-  );
-}
-
-
-/* ═══════════════════════════════════════════════════════════════
-   DASHBOARD TAB
-═══════════════════════════════════════════════════════════════ */
-
-function DashboardTab({
-  active,
-  onClick,
-  label,
-  count,
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-        active
-          ? "text-blue-700 border-blue-700"
-          : "text-slate-500 border-transparent hover:text-slate-800"
-      }`}
-    >
-
-      {label}
-
-      {count !== undefined &&
-        count !== null && (
-
-          <span
-            className={`text-xs px-1.5 py-0.5 rounded-full ${
-              active
-                ? "bg-blue-50 text-blue-700"
-                : "bg-slate-100 text-slate-500"
-            }`}
-          >
-            {count}
-          </span>
-
-        )}
-
-    </button>
-  );
-}
-
-
-/* ═══════════════════════════════════════════════════════════════
-   POSTED JOB CARD
-═══════════════════════════════════════════════════════════════ */
-
-function PostedJobCard({
-  job,
-  applications,
-  applicantCount,
-  onOpen,
-}) {
-  return (
-    <Card className="p-5">
-
-      <div className="flex items-start justify-between gap-4">
-
-        <div className="min-w-0 flex-1">
-
-          <div className="flex items-center gap-2 mb-2">
-
-            <span className="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-full">
-              {job.category}
-            </span>
-
-            <StatusBadge
-              status={
-                job.status
-              }
-            />
-
-          </div>
-
-          <button
-            type="button"
-            onClick={onOpen}
-            className="text-base font-bold text-slate-900 hover:text-blue-700 text-left"
-          >
-            {job.title}
-          </button>
-
-          <p className="text-sm text-slate-500 mt-1 line-clamp-2">
-            {job.description}
-          </p>
-
-        </div>
-
-
-        <div className="text-right flex-shrink-0">
-
-          <p className="text-lg font-extrabold text-emerald-600">
-            ₹
-            {Number(
-              job.amount || 0
-            ).toLocaleString(
-              "en-IN"
-            )}
-          </p>
-
-          <p className="text-xs text-slate-400">
-            {job.deadline
-              ? new Date(
-                  job.deadline
-                ).toLocaleDateString(
-                  "en-IN",
-                  {
-                    day: "numeric",
-                    month: "short",
-                  }
-                )
-              : "No deadline"}
-          </p>
-
-        </div>
-
-      </div>
-
-
-      {/* Job bottom information */}
-
-      <div className="flex flex-wrap items-center justify-between gap-3 mt-4 pt-4 border-t border-slate-100">
-
-        <div className="flex items-center gap-4">
-
-          <span className="flex items-center gap-1.5 text-xs text-slate-500">
-
-            <Users
-              size={13}
-              className="text-slate-400"
-            />
-
-            <strong>
-              {applicantCount}
-            </strong>
-
-            applicant
-            {applicantCount !== 1
-              ? "s"
-              : ""}
-
-          </span>
-
-
-          {job.assignedTo && (
-
-            <span className="flex items-center gap-1.5 text-xs text-emerald-600">
-
-              <UserCheck
-                size={13}
-              />
-
-              Assigned to{" "}
-              <strong>
-                {
-                  job
-                    .assignedTo
-                    .name
-                }
-              </strong>
-
-            </span>
-
-          )}
-
-        </div>
-
-
-        <button
-          type="button"
-          onClick={onOpen}
-          className="flex items-center gap-1 text-xs font-semibold text-blue-700 hover:underline"
+        <p
+          role="alert"
+          className="p-4 mb-5 rounded-xl bg-red-50 text-red-700 text-sm"
         >
-          View Job
-          <ChevronRight
-            size={13}
-          />
-        </button>
-
-      </div>
-
-
-      {/* Applicant preview */}
-
-      {applications.length > 0 && (
-
-        <div className="mt-4 pt-4 border-t border-slate-100">
-
-          <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
-            Recent Applicants
-          </p>
-
-          <div className="flex flex-wrap gap-2">
-
-            {applications
-              .slice(0, 3)
-              .map(
-                (application) => (
-
-                  <div
-                    key={
-                      application.id
-                    }
-                    className="flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-lg px-2.5 py-2"
-                  >
-
-                    <Avatar
-                      name={
-                        application
-                          .applicant
-                          ?.name ||
-                        "Student"
-                      }
-                      size="sm"
-                      role="student"
-                    />
-
-                    <div>
-
-                      <p className="text-xs font-semibold text-slate-700">
-                        {
-                          application
-                            .applicant
-                            ?.name ||
-                          "Student"
-                        }
-                      </p>
-
-                      <p className="text-[11px] text-slate-400">
-                        {application.status ||
-                          "PENDING"}
-                      </p>
-
-                    </div>
-
-                  </div>
-
-                )
-              )}
-
-          </div>
-
-        </div>
-
+          {error}
+        </p>
       )}
-
-    </Card>
-  );
-}
-
-
-/* ═══════════════════════════════════════════════════════════════
-   APPLICANT ROW
-═══════════════════════════════════════════════════════════════ */
-
-function ApplicantRow({
-  application,
-  processing,
-  canProcess,
-  onAccept,
-  onReject,
-}) {
-  const applicant =
-    application.applicant || {};
-
-  return (
-    <div className="border border-slate-100 rounded-xl p-4">
-
-      <div className="flex items-start justify-between gap-4">
-
-        <div className="flex items-center gap-3">
-
-          <Avatar
-            name={
-              applicant.name ||
-              "Student"
-            }
-            size="md"
-            role="student"
-          />
-
-          <div>
-
-            <p className="text-sm font-semibold text-slate-800">
-              {applicant.name ||
-                "Student"}
-            </p>
-
-            <div className="flex items-center gap-2 mt-0.5">
-
-              <RatingStars
-                rating={
-                  Number(
-                    applicant.rating ||
-                    0
-                  )
+      {loading ? (
+        <Loading label={`Loading ${experience.label.toLowerCase()}…`} />
+      ) : (
+        <>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-7">
+            {stats.map(({ label, value, icon: Icon }) => (
+              <div
+                key={label}
+                className="bg-white border border-slate-200 rounded-2xl p-5"
+              >
+                <Icon size={20} className="text-blue-600 mb-4" />
+                <p className="text-2xl font-bold">{value}</p>
+                <p className="text-xs text-slate-500 mt-2">{label}</p>
+              </div>
+            ))}
+          </div>
+          <div className="rounded-2xl bg-blue-50 border border-blue-100 px-6 py-5 flex flex-wrap items-center justify-between gap-5 mb-7">
+            <div>
+              <h2 className="font-bold">{title}</h2>
+              <p className="text-sm text-slate-500 mt-2">
+                {experience.canPost
+                  ? "Post directly, review students’ profiles, and coordinate delivery in project chat."
+                  : profileComplete
+                    ? "See your skills, completed work, and feedback in one place."
+                    : "Add your skills and a short introduction so posters can get to know your work."}
+              </p>
+            </div>
+            <button
+              onClick={() =>
+                setPage(experience.canPost ? "post-job" : "profile")
+              }
+              className="text-sm text-blue-700 font-bold flex gap-2 items-center"
+            >
+              {experience.canPost
+                ? "Post a gig"
+                : profileComplete
+                  ? "View your profile"
+                  : "Complete your profile"}
+              <ArrowUpRight size={16} />
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-5 border-b border-slate-200 mb-6">
+            {[
+              ...(experience.canPost
+                ? [
+                    ["posted", "My postings"],
+                    ["review", `Awaiting review (${awaiting.length})`],
+                  ]
+                : []),
+              ...(experience.isStudent ? [["applied", "My applications"]] : []),
+            ].map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setTab(key)}
+                className={`pb-3 text-sm font-semibold border-b-2 ${tab === key ? "text-blue-700 border-blue-700" : "text-slate-500 border-transparent"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="space-y-3">
+            {workerView ? (
+              data.applications.length ? (
+                data.applications.map((app) => (
+                  <button
+                    key={app.id}
+                    onClick={() => setPage("job-detail", app.job)}
+                    className="w-full text-left bg-white border border-slate-200 rounded-2xl p-5 flex justify-between gap-4 items-center hover:border-blue-300"
+                  >
+                    <div>
+                      <p className="font-bold">{app.job.title}</p>
+                      <p className="text-sm text-slate-500 mt-2">
+                        ₹{Number(app.job.amount).toLocaleString("en-IN")} ·{" "}
+                        {app.job.postedBy.name}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <AppBadge status={app.status} />
+                      {app.status === "ACCEPTED" && (
+                        <StatusBadge status={app.job.status} />
+                      )}
+                    </div>
+                  </button>
+                ))
+              ) : (
+                <EmptyState
+                  icon={Briefcase}
+                  title="Your next campus project starts here."
+                  subtitle="Explore open gigs and send a thoughtful introduction. Your applications will appear here."
+                />
+              )
+            ) : visibleJobs.length ? (
+              visibleJobs.map((job) => (
+                <article
+                  key={job.id}
+                  className="bg-white border border-slate-200 rounded-2xl p-5 flex flex-wrap justify-between items-center gap-4"
+                >
+                  <button
+                    className="text-left"
+                    onClick={() => setPage("job-detail", job)}
+                  >
+                    <p className="font-bold">{job.title}</p>
+                    <p className="text-sm text-slate-500 mt-2">
+                      ₹{Number(job.amount).toLocaleString("en-IN")} ·{" "}
+                      {job._count.applications} applicants
+                    </p>
+                  </button>
+                  <div className="flex items-center gap-4">
+                    <StatusBadge status={job.status} />
+                    <button
+                      onClick={() =>
+                        setPage(
+                          job.status === "PENDING_APPROVAL"
+                            ? "job-detail"
+                            : "applicants",
+                          job,
+                        )
+                      }
+                      className="text-sm font-bold text-blue-700"
+                    >
+                      {job.status === "PENDING_APPROVAL"
+                        ? "Review delivered work →"
+                        : "Review applicants →"}
+                    </button>
+                  </div>
+                </article>
+              ))
+            ) : (
+              <EmptyState
+                icon={CheckCircle}
+                title={
+                  tab === "review"
+                    ? "No work waiting for your decision."
+                    : experience.empty
+                }
+                subtitle={
+                  tab === "review"
+                    ? "Submitted work will appear here when a student requests approval."
+                    : experience.emptyNote
                 }
               />
-
-              <span className="text-xs text-slate-400">
-                {Number(
-                  applicant.rating ||
-                  0
-                ).toFixed(1)}
-              </span>
-
-            </div>
-
+            )}
           </div>
-
-        </div>
-
-
-        <ApplicationStatus
-          status={
-            application.status
-          }
-        />
-
-      </div>
-
-
-      {application.coverNote && (
-
-        <div className="mt-3 p-3 bg-slate-50 rounded-lg">
-
-          <p className="text-xs text-slate-500 leading-relaxed">
-            {application.coverNote}
+          <div className="grid md:grid-cols-2 gap-4 mt-9">
+            <button
+              onClick={() => setPage("messages")}
+              className="bg-white border border-slate-200 rounded-2xl p-5 text-left"
+            >
+              <MessageCircle size={21} className="text-blue-600 mb-3" />
+              <h2 className="font-bold">
+                {experience.isStudent
+                  ? "Keep your collaborations moving."
+                  : "Coordinate with your student collaborators."}
+              </h2>
+              <p className="text-sm text-slate-500 mt-2">
+                Open project conversations and agree on the next step.
+              </p>
+            </button>
+            <button
+              onClick={() => setPage("scholarships")}
+              className="bg-white border border-slate-200 rounded-2xl p-5 text-left"
+            >
+              <GraduationCap size={23} className="text-emerald-600 mb-3" />
+              <h2 className="font-bold">
+                {experience.isStudent
+                  ? "Support for your studies."
+                  : "Student funding resources to share."}
+              </h2>
+              <p className="text-sm text-slate-500 mt-2">
+                {experience.isStudent
+                  ? "Explore scholarships, check listed criteria, and organize your applications."
+                  : "Use official scholarship references when mentoring students. This is a support resource, not a personal funding prompt."}
+              </p>
+            </button>
+          </div>
+          <p className="text-xs text-slate-400 mt-8">
+            {workerView ? "Completed work value reflects agreed budgets. " : ""}
+            Payment is arranged directly between participants.
           </p>
-
-        </div>
-
+        </>
       )}
-
-
-      {canProcess &&
-        application.status ===
-          "PENDING" && (
-
-          <div className="flex gap-2 mt-3">
-
-            <Btn
-              size="sm"
-              onClick={onAccept}
-              disabled={
-                processing
-              }
-              icon={
-                processing ? (
-                  <Loader2
-                    size={13}
-                    className="animate-spin"
-                  />
-                ) : (
-                  <UserCheck
-                    size={13}
-                  />
-                )
-              }
-            >
-              {processing
-                ? "Processing..."
-                : "Accept & Hire"}
-            </Btn>
-
-
-            <Btn
-              variant="ghost"
-              size="sm"
-              onClick={onReject}
-              disabled={
-                processing
-              }
-              icon={
-                <XCircle
-                  size={13}
-                />
-              }
-            >
-              Reject
-            </Btn>
-
-          </div>
-
-        )}
-
     </div>
-  );
-}
-
-
-/* ═══════════════════════════════════════════════════════════════
-   APPLICATION STATUS
-═══════════════════════════════════════════════════════════════ */
-
-function ApplicationStatus({
-  status,
-}) {
-  const normalized =
-    String(
-      status || "PENDING"
-    ).toUpperCase();
-
-  const config = {
-    PENDING: {
-      label: "Pending",
-      className:
-        "bg-amber-50 text-amber-700 border-amber-200",
-    },
-
-    ACCEPTED: {
-      label: "Hired",
-      className:
-        "bg-emerald-50 text-emerald-700 border-emerald-200",
-    },
-
-    REJECTED: {
-      label: "Rejected",
-      className:
-        "bg-red-50 text-red-700 border-red-200",
-    },
-  };
-
-  const item =
-    config[normalized] ||
-    {
-      label: normalized,
-      className:
-        "bg-slate-50 text-slate-600 border-slate-200",
-    };
-
-  return (
-    <span
-      className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${item.className}`}
-    >
-      {item.label}
-    </span>
   );
 }

@@ -1,141 +1,242 @@
-import { useNavigate } from "react-router-dom";
-
-import Btn from "../components/ui/Btn";
-import SectionLabel from "../components/ui/SectionLabel";
-
+import RoleHome from "../components/RoleHome";
+import LandingStories from "../components/LandingStories";
 import {
-  Briefcase,
-  Wallet,
-  Users,
-  Star,
-  Shield,
-  MessageSquare,
-  Award,
   ArrowRight,
-  Plus,
-  Zap
+  ArrowUpRight,
+  Code2,
+  Palette,
+  FileText,
+  GraduationCap,
+  Check,
+  Sparkles,
+  ShieldCheck,
 } from "lucide-react";
-
-export default function LandingPage() {
-  const navigate = useNavigate();
-  const stats = [
-    { value: "200+", label: "Jobs Posted", icon: Briefcase },
-    { value: "₹1.2L", label: "Paid to Students", icon: Wallet },
-    { value: "450+", label: "Students Earning", icon: Users },
-    { value: "4.8★", label: "Average Rating", icon: Star },
-  ];
-  const features = [
-    { icon: Shield,  title: "Verified Campus Only", desc: "Only students and staff from your college. Login requires a college email — no outsiders, no spam." },
-    { icon: Wallet,  title: "Secure Payments",       desc: "Payment is held in escrow when the job is posted and released only after you approve the work." },
-    { icon: MessageSquare, title: "Built-in Chat",   desc: "Every job has its own private chat. No WhatsApp side channels — all communication is logged." },
-    { icon: Award,   title: "Trust & Ratings",       desc: "After every job, both sides rate each other. Your rating is your campus reputation." },
-  ];
-  const steps = [
-    { n: "01", title: "Post a Job",     desc: "Fill a 2-minute form. Set your budget and deadline.", color: "text-blue-700 bg-blue-50 border-blue-200" },
-    { n: "02", title: "Pick an applicant", desc: "Review applicants, read their profiles, hire the best fit.", color: "text-violet-700 bg-violet-50 border-violet-200" },
-    { n: "03", title: "Work Gets Done", desc: "Student delivers. Chat if you need changes.", color: "text-amber-700 bg-amber-50 border-amber-200" },
-    { n: "04", title: "Approve & Pay",  desc: "Approve the work. Payment releases instantly.", color: "text-emerald-700 bg-emerald-50 border-emerald-200" },
-  ];
+const categories = [
+  {
+    icon: Palette,
+    name: "Design & creativity",
+    detail: "Make something worth sharing.",
+    color: "bg-violet-50 text-violet-600",
+  },
+  {
+    icon: Code2,
+    name: "Code & technology",
+    detail: "Turn a good idea into something real.",
+    color: "bg-blue-50 text-blue-600",
+  },
+  {
+    icon: FileText,
+    name: "Writing & documents",
+    detail: "Bring clarity to the details.",
+    color: "bg-amber-50 text-amber-600",
+  },
+];
+export default function LandingPage({ setPage, currentUser }) {
+  if (currentUser)
+    return <RoleHome currentUser={currentUser} setPage={setPage} />;
   return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Hero */}
-      <section className="bg-white border-b border-slate-200">
-        <div className="max-w-4xl mx-auto px-4 py-16 text-center">
-          <div className="inline-flex items-center gap-2 bg-blue-50 border border-blue-200 text-blue-700 text-xs font-bold px-3 py-1.5 rounded-full mb-6">
-            <Zap size={11} className="fill-blue-700" />
-            Now live at Amrita Vishwa Vidyapeetham, Kollam!
-          </div>
-          <h1 className="text-4xl md:text-5xl font-extrabold text-slate-900 leading-tight tracking-tight mb-5">
-            Earn money on campus.<br />
-            <span className="text-blue-700">No WhatsApp needed.</span>
-          </h1>
-          <p className="text-lg text-slate-500 max-w-xl mx-auto mb-8 leading-relaxed">
-            GigGrad connects students who want to earn with teachers who need quick help — with structured jobs, secure payments, and zero drama.
-          </p>
-          <div className="flex items-center justify-center gap-3 flex-wrap">
-            <Btn size="xl" onClick={() => navigate("/jobs")} icon={<Briefcase size={16} />}>Browse Open Jobs</Btn>
-            <Btn size="xl" variant="secondary" onClick={() => navigate("/post-job")} icon={<Plus size={16} />}>Post a Job</Btn>
-          </div>
-        </div>
-        <div className="mt-8 overflow-hidden rounded-lg border border-blue-100 bg-blue-50">
-    <div className="ticker whitespace-nowrap py-2">
-        <span className="mx-8 text-sm font-medium text-blue-700">
-         Students from TKM College of Engineering have started earning on GigGrad
-        </span>
-
-        <span className="mx-8 text-sm font-medium text-blue-700">
-         CET students completed 120+ campus gigs this month
-        </span>
-
-        <span className="mx-8 text-sm font-medium text-blue-700">
-         NSS Palakkad students earned over ₹48,000 through micro-jobs
-        </span>
-
-        <span className="mx-8 text-sm font-medium text-blue-700">
-         Join 450+ students already earning on campus
-        </span>
-    </div>
-</div>
-      </section>
-
-      {/* Stats */}
-      <section className="bg-blue-700 py-8">
-        <div className="max-w-4xl mx-auto px-4 grid grid-cols-2 md:grid-cols-4 gap-6">
-          {stats.map(({ value, label, icon: Icon }) => (
-            <div key={label} className="text-center">
-              <div className="text-2xl font-extrabold text-white mb-1">{value}</div>
-              <div className="text-blue-200 text-xs font-medium flex items-center justify-center gap-1"><Icon size={11} />{label}</div>
+    <div className="landing-page">
+      <section className="hero-section">
+        <div className="max-w-6xl mx-auto px-5 sm:px-6 pt-16 pb-20 lg:pt-24 lg:pb-28 grid lg:grid-cols-2 gap-12 items-center">
+          <div className="hero-copy">
+            <span className="eyebrow">
+              <span className="signal-dot w-2 h-2 rounded-full bg-emerald-500" />{" "}
+              YOUR CAMPUS. YOUR OPPORTUNITY.
+            </span>
+            <h1 className="text-5xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight leading-[1.06] text-slate-950 mt-6">
+              Big talent.
+              <br />
+              Small gigs.
+              <br />
+              <span className="font-editorial gradient-ink">Real growth.</span>
+            </h1>
+            <p className="text-base sm:text-lg text-slate-500 leading-relaxed max-w-md mt-6">
+              You have the skills. Your campus has the work. Connect the two —
+              earn on your terms and build experience that goes beyond the
+              classroom.
+            </p>
+            <div className="flex flex-wrap gap-3 mt-8">
+              <button
+                onClick={() => setPage("jobs")}
+                className="inline-flex items-center gap-3 bg-blue-700 hover:bg-blue-800 text-white rounded-xl px-6 py-3.5 text-sm font-bold shadow-lg shadow-blue-700/15"
+              >
+                Find your next gig <ArrowRight size={17} />
+              </button>
+              <button
+                onClick={() => setPage("post-job")}
+                className="inline-flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-6 py-3.5 text-sm font-bold text-slate-700"
+              >
+                Hire campus talent <ArrowUpRight size={16} />
+              </button>
             </div>
-          ))}
-        </div>
-      </section>
-
-      {/* How it works */}
-      <section className="max-w-4xl mx-auto px-4 py-14">
-        <div className="text-center mb-10">
-          <SectionLabel>How it works</SectionLabel>
-          <h2 className="text-2xl font-bold text-slate-900">From post to payment in 4 steps</h2>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {steps.map(({ n, title, desc, color }) => (
-            <div key={n} className={`rounded-xl border p-5 ${color}`}>
-              <div className="text-2xl font-black mb-3 opacity-30">{n}</div>
-              <div className="font-bold text-sm mb-2">{title}</div>
-              <div className="text-xs leading-relaxed opacity-80">{desc}</div>
+            <div className="mt-7 flex gap-5 text-xs font-medium text-slate-500">
+              <span className="flex items-center gap-1.5">
+                <Check size={14} className="text-emerald-600" />
+                Free to explore
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Check size={14} className="text-emerald-600" />
+                Built around your classes
+              </span>
             </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Features */}
-      <section className="bg-white border-y border-slate-200">
-        <div className="max-w-4xl mx-auto px-4 py-14">
-          <div className="text-center mb-10">
-            <SectionLabel>Why GigGrad</SectionLabel>
-            <h2 className="text-2xl font-bold text-slate-900">Built for campus. Not the internet.</h2>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {features.map(({ icon: Icon, title, desc }) => (
-              <div key={title} className="flex gap-4 p-5 rounded-xl border border-slate-200">
-                <div className="w-10 h-10 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <Icon size={18} className="text-blue-700" />
+          <div className="hero-art relative py-8 px-4 sm:px-10">
+            <div className="absolute inset-2 rounded-full bg-blue-100/60 blur-3xl" />
+            <div className="float-card relative bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xl shadow-blue-900/5 -rotate-2">
+              <div className="flex justify-between items-start">
+                <div className="w-12 h-12 bg-violet-100 text-violet-600 rounded-2xl flex items-center justify-center">
+                  <Palette size={24} />
+                </div>
+                <span className="text-xs bg-emerald-50 text-emerald-700 rounded-full px-3 py-1.5 font-semibold">
+                  A little inspiration
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 uppercase tracking-widest font-bold mt-7">
+                YOUR SKILLS, IN ACTION
+              </p>
+              <h2 className="text-2xl font-bold text-slate-900 mt-3">
+                That thing you’re good at?
+                <br />
+                Someone needs it.
+              </h2>
+              <p className="text-sm text-slate-500 leading-relaxed mt-4">
+                A poster for a campus event. A website for a club. A report that
+                needs a finishing touch.
+              </p>
+              <div className="flex flex-wrap gap-2 my-6">
+                {["Flexible work", "Clear budgets", "Real experience"].map(
+                  (label) => (
+                    <span
+                      key={label}
+                      className="text-xs text-blue-700 bg-blue-50 rounded-lg px-3 py-2 font-medium"
+                    >
+                      {label}
+                    </span>
+                  ),
+                )}
+              </div>
+              <div className="border-t border-slate-100 pt-5 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-blue-700 text-white flex items-center justify-center">
+                  <GraduationCap size={20} />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-slate-900 text-sm mb-1">{title}</h3>
-                  <p className="text-xs text-slate-500 leading-relaxed">{desc}</p>
+                  <p className="text-sm font-bold text-slate-800">
+                    Made for campus life
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Your next chapter starts with a small gig.
+                  </p>
                 </div>
               </div>
-            ))}
+            </div>
+            <div className="float-note absolute -bottom-1 right-2 bg-slate-900 text-white rounded-2xl py-4 px-5 shadow-lg rotate-3 flex items-center gap-3">
+              <Sparkles size={21} className="text-amber-300" />
+              <div>
+                <p className="text-sm font-bold">More than pocket money.</p>
+                <p className="text-xs text-slate-400 mt-1">
+                  Build skills. Meet people. Go further.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </section>
-
-      {/* CTA */}
-      <section className="max-w-4xl mx-auto px-4 py-14 text-center">
-        <h2 className="text-2xl font-bold text-slate-900 mb-3">Ready to start earning?</h2>
-        <p className="text-slate-500 text-sm mb-6">Sign in with your college email. It takes 30 seconds.</p>
-        <Btn size="xl" onClick={() => navigate("/jobs")} icon={<ArrowRight size={16} />}>Get Started Free</Btn>
+      <section className="max-w-6xl mx-auto px-5 sm:px-6 py-16">
+        <div className="flex items-end justify-between gap-4 mb-7">
+          <div>
+            <span className="eyebrow">FIND YOUR THING</span>
+            <h2 className="text-3xl font-bold tracking-tight mt-3">
+              A place for what you do best.
+            </h2>
+          </div>
+          <button
+            onClick={() => setPage("jobs")}
+            className="text-sm text-blue-700 font-semibold hidden sm:flex items-center gap-2"
+          >
+            Explore jobs <ArrowRight size={16} />
+          </button>
+        </div>
+        <div className="grid md:grid-cols-3 gap-5">
+          {categories.map(({ icon: Icon, name, detail, color }) => (
+            <button
+              key={name}
+              onClick={() => setPage("jobs")}
+              className="feature-lift group text-left rounded-2xl border border-slate-200 p-6 bg-white hover:border-blue-300 hover:shadow-md transition-all"
+            >
+              <div
+                className={`w-12 h-12 rounded-xl flex items-center justify-center ${color}`}
+              >
+                <Icon size={23} />
+              </div>
+              <h3 className="font-bold text-lg text-slate-900 mt-5 flex justify-between items-center">
+                {name}
+                <ArrowUpRight
+                  size={18}
+                  className="text-slate-300 group-hover:text-blue-600"
+                />
+              </h3>
+              <p className="text-sm text-slate-500 mt-2">{detail}</p>
+            </button>
+          ))}
+        </div>
       </section>
+      <section className="max-w-6xl mx-auto px-5 sm:px-6 pb-12">
+        <div className="scholar-hero rounded-3xl p-8 sm:p-12 flex flex-col sm:flex-row gap-7 items-start sm:items-center justify-between text-white">
+          <div>
+            <span className="eyebrow text-emerald-200">
+              BEYOND THE NEXT GIG
+            </span>
+            <h2 className="text-3xl font-bold mt-4">
+              More possibility.
+              <br />
+              <span className="font-editorial text-emerald-200">
+                A little more support.
+              </span>
+            </h2>
+            <p className="text-sm text-emerald-100 mt-4 max-w-md">
+              Explore scholarship sources, check the listed criteria, and keep
+              your applications moving.
+            </p>
+          </div>
+          <button
+            onClick={() => setPage("scholarships")}
+            className="bg-white text-emerald-800 rounded-xl px-5 py-3 text-sm font-bold whitespace-nowrap"
+          >
+            Explore scholarship support →
+          </button>
+        </div>
+      </section>
+      <LandingStories setPage={setPage} />
+      <section className="max-w-6xl mx-auto px-5 sm:px-6 py-16">
+        <div className="rounded-3xl bg-blue-50 border border-blue-100 p-8 sm:p-12 flex flex-col sm:flex-row justify-between gap-6 items-start sm:items-center">
+          <div>
+            <ShieldCheck className="text-blue-700 mb-3" size={24} />
+            <h2 className="text-2xl font-bold text-slate-900">
+              Good work starts with trust.
+            </h2>
+            <p className="text-sm text-slate-500 mt-3 max-w-lg leading-relaxed">
+              Faculty and staff can post directly; student posting is approved
+              by an administrator. Every gig has a clear brief, budget, and
+              deadline. Payments are arranged directly between participants.
+            </p>
+          </div>
+          <button
+            onClick={() => setPage(currentUser ? "request-access" : "login")}
+            className="whitespace-nowrap bg-blue-700 text-white px-5 py-3 rounded-xl text-sm font-bold"
+          >
+            {currentUser ? "Request posting access" : "Join your campus"} →
+          </button>
+        </div>
+      </section>
+      <footer className="border-t border-slate-200 max-w-6xl mx-auto px-5 py-7 flex justify-between gap-5 text-xs text-slate-400">
+        <span className="font-bold text-slate-700">
+          GigGrad
+          <span className="font-normal text-slate-400 ml-3">
+            Small gigs. Real growth.
+          </span>
+        </span>
+        <span>Made for the campus community.</span>
+      </footer>
     </div>
   );
 }

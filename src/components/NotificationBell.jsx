@@ -1,15 +1,97 @@
 import { useState, useRef, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+
 import { Bell, Check } from "lucide-react";
 
-import { NOTIFICATIONS } from "../data/notifications";
+import { usersAPI, getUser } from "../lib/api";
 
-export default function NotificationBell() {
+export default function NotificationBell({ setPage }) {
   const [open, setOpen] = useState(false);
-  const [items, setItems] = useState(NOTIFICATIONS);
+  const [items, setItems] = useState([]);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const storageKey = `gg_read_${getUser()?.id}`;
   const ref = useRef(null);
-  const navigate = useNavigate();
 
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    async function load() {
+      setLoading(true);
+      setError("");
+      try {
+        const data = await usersAPI.dashboard();
+        let seen = [];
+        try {
+          seen = JSON.parse(localStorage.getItem(storageKey) || "[]");
+          if (!Array.isArray(seen)) seen = [];
+        } catch {
+          /* use an empty read list */
+        }
+        const incoming = data.jobs
+          .filter(
+            (job) =>
+              job.status === "PENDING_APPROVAL" || job._count.applications > 0,
+          )
+          .map((job) => ({
+            id: `${job.id}:${job.status}:${job._count.applications}`,
+            title:
+              job.status === "PENDING_APPROVAL"
+                ? "Work ready for your review"
+                : "Your gig has applicants",
+            body: job.title,
+            to: job.status === "OPEN" ? "applicants" : "job-detail",
+            job,
+          }));
+        const applications = data.applications
+          .filter((app) => app.status !== "PENDING")
+          .map((app) => ({
+            id: `${app.id}:${app.status}:${app.job.status}`,
+            title:
+              app.status === "ACCEPTED"
+                ? "You’ve been selected for a gig"
+                : "Application update",
+            body: app.job.title,
+            to: "job-detail",
+            job: app.job,
+          }));
+        if (active)
+          setItems(
+            [...incoming, ...applications]
+              .slice(0, 30)
+              .map((item) => ({ ...item, read: seen.includes(item.id) })),
+          );
+      } catch (err) {
+        if (active) setError(err.message);
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+    load();
+    return () => {
+      active = false;
+    };
+  }, [open, storageKey]);
+  function markRead(ids) {
+    setItems((previous) =>
+      previous.map((item) => ({
+        ...item,
+        read: item.read || ids.includes(item.id),
+      })),
+    );
+    try {
+      const previous = JSON.parse(localStorage.getItem(storageKey) || "[]");
+      localStorage.setItem(
+        storageKey,
+        JSON.stringify(
+          [
+            ...new Set([...(Array.isArray(previous) ? previous : []), ...ids]),
+          ].slice(-200),
+        ),
+      );
+    } catch {
+      /* read state remains available for this session */
+    }
+  }
   const unread = items.filter((n) => !n.read).length;
 
   // Close on outside click or Escape.
@@ -18,7 +100,9 @@ export default function NotificationBell() {
     const onClick = (e) => {
       if (ref.current && !ref.current.contains(e.target)) setOpen(false);
     };
-    const onKey = (e) => { if (e.key === "Escape") setOpen(false); };
+    const onKey = (e) => {
+      if (e.key === "Escape") setOpen(false);
+    };
     document.addEventListener("mousedown", onClick);
     document.addEventListener("keydown", onKey);
     return () => {
@@ -27,13 +111,11 @@ export default function NotificationBell() {
     };
   }, [open]);
 
-  const markAllRead = () =>
-    setItems((prev) => prev.map((n) => ({ ...n, read: true })));
-
-  const openNotification = (n) => {
-    setItems((prev) => prev.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
+  const markAllRead = () => markRead(items.map((item) => item.id));
+  const openNotification = (item) => {
+    markRead([item.id]);
     setOpen(false);
-    if (n.to) navigate(n.to);
+    setPage(item.to, item.job);
   };
 
   return (
@@ -53,7 +135,9 @@ export default function NotificationBell() {
       {open && (
         <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] bg-white rounded-xl border border-slate-200 shadow-lg z-50 overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-            <span className="text-sm font-semibold text-slate-900">Notifications</span>
+            <span className="text-sm font-semibold text-slate-900">
+              Notifications
+            </span>
             {unread > 0 && (
               <button
                 onClick={markAllRead}
@@ -64,7 +148,18 @@ export default function NotificationBell() {
             )}
           </div>
 
-          {items.length === 0 ? (
+          {loading ? (
+            <p
+              role="status"
+              className="px-4 py-8 text-center text-sm text-slate-500"
+            >
+              Loading activity…
+            </p>
+          ) : error ? (
+            <p role="alert" className="p-4 text-sm text-red-600">
+              {error}
+            </p>
+          ) : items.length === 0 ? (
             <div className="px-4 py-8 text-center text-sm text-slate-500">
               You&apos;re all caught up.
             </div>
@@ -83,9 +178,15 @@ export default function NotificationBell() {
                         <span className="mt-1.5 w-1.5 h-1.5 shrink-0 bg-blue-600 rounded-full" />
                       )}
                       <div className={n.read ? "pl-3.5" : ""}>
-                        <p className="text-sm font-medium text-slate-900">{n.title}</p>
-                        <p className="text-xs text-slate-600 mt-0.5">{n.body}</p>
-                        <p className="text-[11px] text-slate-400 mt-1">{n.timeAgo}</p>
+                        <p className="text-sm font-medium text-slate-900">
+                          {n.title}
+                        </p>
+                        <p className="text-xs text-slate-600 mt-0.5">
+                          {n.body}
+                        </p>
+                        <p className="text-[11px] text-slate-400 mt-1">
+                          {n.timeAgo}
+                        </p>
                       </div>
                     </div>
                   </button>

@@ -7,7 +7,13 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "npm --prefix Gig-Grad-Server test",
+    "check": "npm run lint && npm test && npm run build",
+    "format": "prettier --write src Gig-Grad-Server/src Gig-Grad-Server/scripts Gig-Grad-Server/test scripts",
+    "test:browser": "node scripts/browser-smoke.mjs",
+    "test:roles": "node scripts/demo-walkthrough.mjs",
+    "test:scholarships": "node scripts/scholarship-smoke.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.20.0",
@@ -27,6 +33,7 @@
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.6.0",
     "postcss": "^8.5.15",
+    "prettier": "^3.9.10",
     "tailwindcss": "^4.3.1",
     "vite": "^8.0.12"
   }

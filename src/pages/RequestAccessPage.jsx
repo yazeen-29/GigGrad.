@@ -1,37 +1,48 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { canPostJobs } from "../utils/verification";
+import { accessAPI } from "../lib/api";
 
 import Card from "../components/ui/Card";
 import Btn from "../components/ui/Btn";
 import SectionLabel from "../components/ui/SectionLabel";
 
-import { useAuth } from "../context/AuthContext";
-
 import { ShieldCheck, Clock, CheckCircle, Send, Loader2 } from "lucide-react";
 
 const POSTER_TYPES = [
-  { value: "club",    label: "Club / Chapter" },
+  { value: "individual", label: "Student project" },
+  { value: "club", label: "Club / Chapter" },
   { value: "council", label: "Student Council / Committee" },
-  { value: "org",     label: "Campus Organization" },
+  { value: "org", label: "Campus Organization" },
   { value: "startup", label: "Campus Startup" },
 ];
 
-export default function RequestAccessPage() {
-  const navigate = useNavigate();
-  const { user, updateUser } = useAuth();
-  const [posterType, setPosterType] = useState("club");
+export default function RequestAccessPage({
+  currentUser: user,
+  setPage,
+  onUpdate,
+}) {
+  const navigate = (path) => setPage(path.replace(/^\//, ""));
+  const [error, setError] = useState("");
+  const [posterType, setPosterType] = useState(
+    user.role === "TEACHER" ? "faculty" : "club",
+  );
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   // Already approved — nothing to request.
-  if (user.posterStatus === "approved") {
+  if (canPostJobs(user)) {
     return (
       <div className="max-w-lg mx-auto px-4 py-20 text-center">
         <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-5">
           <CheckCircle size={32} className="text-emerald-600" />
         </div>
-        <h2 className="text-xl font-bold text-slate-900 mb-2">You can already post jobs</h2>
-        <p className="text-slate-500 text-sm mb-6">Your account is a verified poster.</p>
+        <h2 className="text-xl font-bold text-slate-900 mb-2">
+          You can already post jobs
+        </h2>
+        <p className="text-slate-500 text-sm mb-6">
+          Your role already has posting access. No administrator approval is
+          required.
+        </p>
         <Btn onClick={() => navigate("/post-job")}>Post a Job</Btn>
       </div>
     );
@@ -44,21 +55,30 @@ export default function RequestAccessPage() {
         <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-5">
           <Clock size={30} className="text-amber-600" />
         </div>
-        <h2 className="text-xl font-bold text-slate-900 mb-2">Request under review</h2>
-        <p className="text-slate-500 text-sm mb-6">An admin is reviewing your request for posting access. You'll be able to post once it's approved.</p>
-        <Btn variant="secondary" onClick={() => navigate("/jobs")}>Browse Jobs Meanwhile</Btn>
+        <h2 className="text-xl font-bold text-slate-900 mb-2">
+          Request under review
+        </h2>
+        <p className="text-slate-500 text-sm mb-6">
+          An admin is reviewing your request for posting access. You'll be able
+          to post once it's approved.
+        </p>
+        <Btn variant="secondary" onClick={() => navigate("/jobs")}>
+          Browse Jobs Meanwhile
+        </Btn>
       </div>
     );
   }
 
-  const submit = () => {
+  const submit = async () => {
     setSubmitting(true);
-    // Mock: flip the user's status to pending. Later this writes a
-    // posterRequests doc that surfaces in the admin queue.
-    setTimeout(() => {
-      updateUser({ posterStatus: "pending", posterType, requestReason: reason.trim() });
+    setError("");
+    try {
+      onUpdate(await accessAPI.request({ posterType, reason: reason.trim() }));
+    } catch (err) {
+      setError(err.message);
+    } finally {
       setSubmitting(false);
-    }, 900);
+    }
   };
 
   return (
@@ -67,14 +87,21 @@ export default function RequestAccessPage() {
         <div className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-full mb-3">
           <ShieldCheck size={12} /> Posting is a verified action
         </div>
-        <h1 className="text-2xl font-bold text-slate-900 mb-1">Request posting access</h1>
+        <h1 className="text-2xl font-bold text-slate-900 mb-1">
+          Request posting access
+        </h1>
         <p className="text-slate-500 text-sm">
-          Faculty and staff are verified automatically by their official email. Clubs, councils,
-          organizations and campus startups can request access — an admin reviews each request to
+          Students and student-led clubs, councils, organizations and campus
+          startups can request posting access — an admin reviews each request to
           keep the marketplace trusted and spam-free.
         </p>
       </div>
 
+      {error && (
+        <p role="alert" className="text-red-600 mb-4">
+          {error}
+        </p>
+      )}
       <Card className="p-6 flex flex-col gap-5">
         <div>
           <SectionLabel>Requesting as</SectionLabel>
@@ -97,21 +124,31 @@ export default function RequestAccessPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-1.5">Why do you need to post jobs?</label>
+          <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+            Why do you need to post jobs?
+          </label>
           <textarea
             value={reason}
-            onChange={e => setReason(e.target.value)}
+            onChange={(e) => setReason(e.target.value)}
             rows={4}
             placeholder="e.g. We're the ACM chapter and want to hire student designers and developers for our technical events."
             className="w-full px-3 py-2.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
           />
-          <p className="text-xs text-slate-400 mt-1">An admin will verify your body is officially recognized on campus.</p>
+          <p className="text-xs text-slate-400 mt-1">
+            An administrator will review your student posting request.
+          </p>
         </div>
 
         <Btn
           full
-          disabled={!reason.trim() || submitting}
-          icon={submitting ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+          disabled={reason.trim().length < 20 || submitting}
+          icon={
+            submitting ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Send size={14} />
+            )
+          }
           onClick={submit}
         >
           {submitting ? "Submitting…" : "Submit Request"}

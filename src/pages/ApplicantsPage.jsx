@@ -10,23 +10,14 @@ import EmptyState from "../components/ui/EmptyState";
 
 import { appsAPI, jobsAPI } from "../lib/api";
 
-import {
-  ChevronRight,
-  Users,
-  CheckCircle,
-  XCircle,
-} from "lucide-react";
+import { ChevronRight, Users, CheckCircle, XCircle } from "lucide-react";
 
-export default function ApplicantsPage({
-  jobId,
-  setPage,
-  currentUser,
-}) {
+export default function ApplicantsPage({ jobId, setPage }) {
   const [job, setJob] = useState(null);
   const [applicants, setApplicants] = useState([]);
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(!!jobId);
+  const [error, setError] = useState(jobId ? "" : "No job selected.");
   const [actioning, setActioning] = useState(null);
 
   // ─────────────────────────────────────────────
@@ -34,11 +25,7 @@ export default function ApplicantsPage({
   // ─────────────────────────────────────────────
 
   useEffect(() => {
-    if (!jobId) {
-      setLoading(false);
-      setError("No job selected.");
-      return;
-    }
+    if (!jobId) return;
 
     async function load() {
       try {
@@ -51,17 +38,11 @@ export default function ApplicantsPage({
         ]);
 
         setJob(jobData || null);
-        setApplicants(
-          Array.isArray(applicantsData)
-            ? applicantsData
-            : []
-        );
+        setApplicants(Array.isArray(applicantsData) ? applicantsData : []);
       } catch (err) {
         console.error("ApplicantsPage load error:", err);
 
-        setError(
-          err.message || "Failed to load applicants."
-        );
+        setError(err.message || "Failed to load applicants.");
       } finally {
         setLoading(false);
       }
@@ -79,45 +60,37 @@ export default function ApplicantsPage({
 
     const data = await appsAPI.forJob(jobId);
 
-    setApplicants(
-      Array.isArray(data)
-        ? data
-        : []
-    );
+    setApplicants(Array.isArray(data) ? data : []);
   };
 
   // ─────────────────────────────────────────────
   // Accept / Hire
   // ─────────────────────────────────────────────
 
-const handleAccept = async (appId) => {
-  setActioning(appId);
-  setError("");
+  const handleAccept = async (appId) => {
+    setActioning(appId);
+    setError("");
 
-  try {
-    // 1. Accept the application
-    await appsAPI.accept(appId);
+    try {
+      // Accept the application. The backend does this as a single
+      // transaction: application -> ACCEPTED, other applications on this
+      // job -> REJECTED, job -> IN_PROGRESS with assignedToId set. Do NOT
+      // call jobsAPI.status() separately here — that was a redundant
+      // second request racing against the same job row.
+      await appsAPI.accept(appId);
 
-    // 2. Move the job from OPEN → IN_PROGRESS
-    await jobsAPI.status(jobId, "IN_PROGRESS");
+      // Refresh applicants and the job itself so UI shows the new state.
+      await refreshApplicants();
+      const updatedJob = await jobsAPI.getOne(jobId);
+      setJob(updatedJob);
+    } catch (err) {
+      console.error("Accept applicant error:", err);
 
-    // 3. Refresh applicants from backend
-    await refreshApplicants();
-
-    // 4. Refresh the job itself so UI shows new status
-    const updatedJob = await jobsAPI.getOne(jobId);
-    setJob(updatedJob);
-
-  } catch (err) {
-    console.error("Accept applicant error:", err);
-
-    setError(
-      err.message || "Failed to hire applicant."
-    );
-  } finally {
-    setActioning(null);
-  }
-};
+      setError(err.message || "Failed to hire applicant.");
+    } finally {
+      setActioning(null);
+    }
+  };
   // ─────────────────────────────────────────────
   // Reject
   // ─────────────────────────────────────────────
@@ -133,9 +106,7 @@ const handleAccept = async (appId) => {
     } catch (err) {
       console.error("Reject applicant error:", err);
 
-      setError(
-        err.message || "Failed to reject applicant."
-      );
+      setError(err.message || "Failed to reject applicant.");
     } finally {
       setActioning(null);
     }
@@ -175,23 +146,17 @@ const handleAccept = async (appId) => {
   }
 
   const hasHired = applicants.some(
-    (a) =>
-      String(a.status || "").toUpperCase() === "ACCEPTED"
+    (a) => String(a.status || "").toUpperCase() === "ACCEPTED",
   );
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6">
-
       {/* Back button */}
       <button
         onClick={() => setPage("my-jobs")}
         className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-900 mb-5 transition-colors"
       >
-        <ChevronRight
-          size={14}
-          className="rotate-180"
-        />
-
+        <ChevronRight size={14} className="rotate-180" />
         Back to My Jobs
       </button>
 
@@ -207,9 +172,7 @@ const handleAccept = async (appId) => {
 
         <div className="flex items-center gap-3 mt-2 flex-wrap">
           {job?.category && (
-            <span className="text-xs text-slate-500">
-              {job.category}
-            </span>
+            <span className="text-xs text-slate-500">{job.category}</span>
           )}
 
           {job?.amount !== undefined && (
@@ -228,10 +191,7 @@ const handleAccept = async (appId) => {
       {/* Hired banner */}
       {hasHired && (
         <div className="mb-5 p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-3">
-          <CheckCircle
-            size={18}
-            className="text-emerald-600 flex-shrink-0"
-          />
+          <CheckCircle size={18} className="text-emerald-600 flex-shrink-0" />
 
           <div>
             <p className="text-sm font-semibold text-emerald-800">
@@ -239,8 +199,7 @@ const handleAccept = async (appId) => {
             </p>
 
             <p className="text-xs text-emerald-600 mt-0.5">
-              The job is now in progress. Other applicants have
-              been notified.
+              The job is now in progress. Other applicants have been notified.
             </p>
           </div>
         </div>
@@ -253,9 +212,7 @@ const handleAccept = async (appId) => {
             Something went wrong
           </p>
 
-          <p className="text-xs text-red-600 mt-1">
-            {error}
-          </p>
+          <p className="text-xs text-red-600 mt-1">{error}</p>
         </div>
       )}
 
@@ -271,27 +228,20 @@ const handleAccept = async (appId) => {
       {/* Applicant cards */}
       {applicants.length > 0 && (
         <div className="flex flex-col gap-4">
-
           {applicants.map((app) => {
             const applicant = app.applicant || {};
 
-            const status =
-              String(app.status || "PENDING").toUpperCase();
+            const status = String(app.status || "PENDING").toUpperCase();
 
-            const statusKey =
-              status.toLowerCase();
+            const statusKey = status; // APP_CFG keys are uppercase, matching the Prisma enum
 
-            const isActioning =
-              actioning === app.id;
+            const isActioning = actioning === app.id;
 
-            const isAccepted =
-              status === "ACCEPTED";
+            const isAccepted = status === "ACCEPTED";
 
-            const isRejected =
-              status === "REJECTED";
+            const isRejected = status === "REJECTED";
 
-            const isPending =
-              status === "PENDING";
+            const isPending = status === "PENDING";
 
             return (
               <Card
@@ -300,12 +250,11 @@ const handleAccept = async (appId) => {
                   isAccepted
                     ? "border-emerald-300 bg-emerald-50/30"
                     : isRejected
-                    ? "border-slate-200 opacity-60"
-                    : ""
+                      ? "border-slate-200 opacity-60"
+                      : ""
                 }`}
               >
                 <div className="flex items-start gap-4">
-
                   {/* Avatar */}
                   <Avatar
                     name={applicant.name || "?"}
@@ -314,21 +263,18 @@ const handleAccept = async (appId) => {
                   />
 
                   <div className="flex-1 min-w-0">
-
                     {/* Name + status */}
                     <div className="flex items-start justify-between gap-2 flex-wrap">
-
                       <div>
-                        <h3 className="font-semibold text-slate-900 text-sm">
+                        <button
+                          onClick={() => setPage("profile", applicant)}
+                          className="font-semibold text-slate-900 text-base hover:text-blue-700 text-left"
+                        >
                           {applicant.name || "Unknown Student"}
-                        </h3>
+                        </button>
 
                         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                          <RatingStars
-                            rating={
-                              applicant.rating || 0
-                            }
-                          />
+                          <RatingStars rating={applicant.rating || 0} />
 
                           {applicant.college && (
                             <span className="text-xs text-slate-400">
@@ -338,9 +284,7 @@ const handleAccept = async (appId) => {
                         </div>
                       </div>
 
-                      <AppBadge
-                        status={statusKey}
-                      />
+                      <AppBadge status={statusKey} />
                     </div>
 
                     {/* Cover note */}
@@ -357,62 +301,54 @@ const handleAccept = async (appId) => {
                       </p>
                     )}
 
+                    {applicant.skills?.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        {applicant.skills.map((skill) => (
+                          <span
+                            key={skill}
+                            className="text-xs px-2 py-1 rounded-lg bg-blue-50 text-blue-700"
+                          >
+                            {skill}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     {/* Applied date */}
                     {app.appliedAt && (
                       <p className="mt-2 text-xs text-slate-400">
                         Applied{" "}
-                        {new Date(
-                          app.appliedAt
-                        ).toLocaleDateString(
-                          "en-IN",
-                          {
-                            day: "numeric",
-                            month: "short",
-                            year: "numeric",
-                          }
-                        )}
+                        {new Date(app.appliedAt).toLocaleDateString("en-IN", {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        })}
                       </p>
                     )}
 
                     {/* Actions */}
-                    {!hasHired &&
-                      isPending && (
-                        <div className="flex items-center gap-2 mt-4">
+                    {!hasHired && isPending && (
+                      <div className="flex items-center gap-2 mt-4">
+                        <Btn
+                          size="sm"
+                          variant="success"
+                          disabled={!!actioning}
+                          onClick={() => handleAccept(app.id)}
+                          icon={<CheckCircle size={13} />}
+                        >
+                          {isActioning ? "Hiring…" : "Hire"}
+                        </Btn>
 
-                          <Btn
-                            size="sm"
-                            variant="success"
-                            disabled={!!actioning}
-                            onClick={() =>
-                              handleAccept(app.id)
-                            }
-                            icon={
-                              <CheckCircle size={13} />
-                            }
-                          >
-                            {isActioning
-                              ? "Hiring…"
-                              : "Hire"}
-                          </Btn>
-
-                          <Btn
-                            size="sm"
-                            variant="secondary"
-                            disabled={!!actioning}
-                            onClick={() =>
-                              handleReject(app.id)
-                            }
-                            icon={
-                              <XCircle size={13} />
-                            }
-                          >
-                            {isActioning
-                              ? "Rejecting…"
-                              : "Reject"}
-                          </Btn>
-
-                        </div>
-                      )}
+                        <Btn
+                          size="sm"
+                          variant="secondary"
+                          disabled={!!actioning}
+                          onClick={() => handleReject(app.id)}
+                          icon={<XCircle size={13} />}
+                        >
+                          {isActioning ? "Rejecting…" : "Reject"}
+                        </Btn>
+                      </div>
+                    )}
 
                     {/* Accepted */}
                     {isAccepted && (
@@ -424,13 +360,11 @@ const handleAccept = async (appId) => {
                         </span>
                       </div>
                     )}
-
                   </div>
                 </div>
               </Card>
             );
           })}
-
         </div>
       )}
     </div>

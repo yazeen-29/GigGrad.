@@ -69,6 +69,10 @@ TEST_DATABASE_URL=postgresql://user:password@localhost:5432/giggrad_test node sc
 
 The script launches isolated local servers and a temporary headless browser, tests the actual login form, application submission, hiring, two-account messaging and mobile navigation, and writes screenshots to `/tmp/giggrad-{desktop,dashboard,chat,mobile}.png`.
 
+## Free hosted pilot
+
+See [FREE_DEPLOYMENT.md](FREE_DEPLOYMENT.md) for the free Render + Supabase configuration, GitHub deployment workflow, secret setup and later upgrades. `render.yaml` selects one Free service and provisions no paid AI provider.
+
 ## Container deployment
 
 Set `POSTGRES_PASSWORD` to a strong URL-safe password and `JWT_SECRET` to a random secret. Set `CORS_ORIGINS` to the public origin. Run:
@@ -162,3 +166,9 @@ Open `/learn` for six learning paths, official resources, practice briefs and po
 Milo replaces Campus Companion with an animated mascot, role-aware greetings and AI enabled by default for signed-in users when configured. The server uses OpenAI's Responses API with `store: false`, conversation history, the current page, complete app help, scholarship facts and the learning catalogue. Profile context includes name, role, posting access and skills; account email, bio, credentials and private conversations are excluded. The AI checkbox lets users choose built-in guidance instead. Provider errors and missing configuration are explicitly labelled.
 
 Configure `OPENAI_API_KEY` and an accessible `OPENAI_MODEL` in `Gig-Grad-Server/.env`, restart the API, and refresh the site to enable live AI. Never put the key in frontend environment variables. No provider credentials were present during implementation; provider request/response handling is tested with mock responses, not a live paid request. Milo explains workflows and coaches users; it has no account action tools or live browsing.
+
+## Student showcase and navigation
+
+Student profiles support an optional headline, portfolio, hosted CV, GitHub, LinkedIn, up to eight featured projects and up to eight achievements. These fields persist in PostgreSQL and are visible on public profiles; achievements are explicitly student-provided. Project links are required, evidence links are optional, and all links must use HTTPS without embedded credentials. CV files are hosted externally; users should share a view-only link. Existing completed GigGrad work remains separate. Migration `202611020001_student_showcase` adds fields without removing existing data.
+
+The navigation uses four primary destinations for students, an eligible posting action and an account dropdown for profile, messages and posting access. Smaller screens use a grouped disclosure menu. Both menus support Escape and visible keyboard focus.

@@ -1,0 +1,28 @@
+# Free pilot: website + API in one service; persistent data stays in Supabase.
+services:
+  - type: web
+    name: giggrad
+    runtime: node
+    plan: free
+    region: singapore
+    branch: main
+    autoDeployTrigger: checksPass
+    buildCommand: npm ci --include=dev && npm ci --prefix Gig-Grad-Server --include=dev && npm --prefix Gig-Grad-Server run db:generate && npm run lint && npm run build
+    startCommand: node scripts/start-production.mjs
+    healthCheckPath: /ready
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: SERVE_WEB
+        value: "1"
+      - key: TRUST_PROXY
+        value: "1"
+      - key: VITE_API_URL
+        value: /api
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      # No paid AI provider credentials are provisioned for the free pilot.

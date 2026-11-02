@@ -5,7 +5,11 @@ const prisma = require("./lib/prisma");
 const app = express();
 app.disable("x-powered-by");
 if (process.env.TRUST_PROXY === "1") app.set("trust proxy", 1);
-const origins = (process.env.CORS_ORIGINS || "http://localhost:5173")
+const origins = (
+  process.env.CORS_ORIGINS ||
+  process.env.RENDER_EXTERNAL_URL ||
+  "http://localhost:5173"
+)
   .split(",")
   .map((s) => s.trim());
 app.use(
@@ -76,6 +80,11 @@ app.get("/ready", async (req, res) => {
     res.status(503).json({ status: "unavailable" });
   }
 });
+if (process.env.SERVE_WEB === "1")
+  require("./lib/web")(
+    app,
+    require("node:path").resolve(__dirname, "../../dist"),
+  );
 app.use((req, res) => res.status(404).json({ error: "Route not found" }));
 app.use((error, req, res, next) => {
   if (res.headersSent) return next(error);
